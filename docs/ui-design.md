@@ -2,7 +2,7 @@
 
 ## Design Philosophy
 
-This isn't a desktop. There are no windows to manage. No taskbar. No system tray with 12 icons. 
+This isn't a desktop. There are no windows to manage. No taskbar. No system tray with 12 icons.
 
 The screen is a **canvas for the agent to communicate with you visually.** When there's nothing to show, it's beautiful. When there's information, it appears naturally and disappears when done.
 
@@ -14,113 +14,163 @@ Think: the love child of Apple's Dynamic Island, the Nothing Phone's Glyph inter
 
 When idle, the screen shows a living, breathing ambient display:
 
-- **Time and date** — elegant, large typography (think Dieter Rams clock)
-- **Subtle particle field** — generative art that shifts with time of day (warm tones at sunset, cool at night, bright in morning)
-- **Status indicators** — tiny, tasteful dots that show connectivity, agent status, message count
-- **Weather gradient** — the background subtly reflects current weather (overcast = muted, sunny = warm, rain = cool ripples)
+- **Time and date** — elegant, large typography
+- **Generative aurora background** — organic flowing gradients driven by simplex noise (see below)
+- **Status indicators** — tiny, tasteful dots that show connectivity and agent status
+- **Notification cards** — slide in from the right when events arrive
 
 The ambient state is what you see from across the room. It's art, not UI.
 
-### 2. Cards
+### 2. Generative Background
 
-All information appears as **cards** that emerge from the ambient state. Cards have physics — they slide in, stack naturally, and can be dismissed with a swipe or voice command.
+The background is a multi-layered generative art piece, not a static wallpaper:
+
+- **Layer 1 — Aurora bands:** Wide color bands displaced by multi-octave OpenSimplex noise. Colors interpolate between coral (#ff4d4d) and cyan (#00e5cc) brand colors. Each band has its own noise offset for independent motion.
+- **Layer 2 — Flow field curves:** A grid of control points defines a flow field. Curves trace through the field, creating organic texture lines.
+- **Layer 3 — Drift particles:** ~120 small particles follow the flow field, glowing subtly as they drift. Their color is position-dependent, creating depth.
+- **Layer 4 — Vignette:** Soft edge darkening for depth and focus.
+
+The entire field has a "breathing" pulse — a slow sinusoidal modulation of brightness that makes it feel alive. Time evolution is slow (0.008 per frame) so the animation feels geological, not frenetic.
+
+Performance: targets 60fps with canvas caching. All rendering uses iced's canvas widget.
+
+**Theme adaptation:** In light mode, all layer opacities are reduced (~50%) to maintain readability against the lighter background.
+
+### 3. Cards
+
+All information appears as **cards** that emerge from the ambient state. Cards have physics — they slide in with spring-like decay animation.
 
 Card types:
-- **Message card** — new message from Telegram/WhatsApp/etc.
+- **Message card** — new message from Telegram/WhatsApp/Discord
 - **Alert card** — calendar event, timer, reminder
-- **Status card** — system update, network change, weather alert  
-- **Media card** — currently playing audio, podcast
-- **Action card** — agent asking for confirmation ("Should I send this email?")
-- **Info card** — agent showing you something (search results, comparison table, chart)
+- **Status card** — system update, network change
+- **Info card** — agent showing information
 
 Cards follow strict design rules:
-- **Frosted glass** (backdrop blur) — content behind remains faintly visible
+- **Frosted glass** — semi-transparent background using `surface_card_strong` from palette
 - **Rounded corners** — 16px radius, consistent everywhere
-- **Shadow depth** — cards closer to you cast deeper shadows
-- **Typography** — SF Pro or Inter, never more than 2 font sizes per card
-- **Color** — each card type has a subtle accent color, never garish
-- **Animation** — cards spring in (spring physics, not linear), fade out when dismissed
+- **Shadow depth** — cards cast deep shadows (blur 16px)
+- **Typography** — Display (72px), Heading (24px), Body (16px), Caption (12px)
+- **Color** — each card type has a subtle accent dot (coral for messages, cyan for status)
+- **Animation** — cards spring in (offset decays by 12% per frame), no linear easing
 
-### 3. The Conversation View
+### 4. The Dock
 
-When actively talking to the agent (voice or text), the screen transitions smoothly:
+A glass-pill shaped dock anchored at the bottom center. **Always visible** (no auto-hide).
 
-- Ambient particles pull back to edges
-- A clean conversation area appears center-screen
-- Agent responses appear as flowing text with subtle typewriter animation
-- Voice input shows a waveform visualization (not a spinning circle)
-- Code blocks, tables, images render beautifully inline
+Layout: `[🎤] [________________text input________________] [→] [☀/🌙]`
 
-The conversation view is NOT a chat log. It's the current interaction. Previous messages fade and compress. The focus is always on NOW.
+- **Mic button** (left) — tap to toggle voice listening mode
+- **Text input** (center) — always visible, ready to type. Placeholder: "Talk to your agent..."
+- **Send button** (right) — arrow icon, activates when text is present. Coral color when active, muted when inactive.
+- **Theme toggle** (far right) — sun/moon icon to switch between dark and light modes
 
-### 4. Voice Visualization
+Pressing Enter or clicking the send button submits the message. Messages go to the gateway (or mock) and responses appear in the conversation view.
 
-When the agent is listening or speaking, visual feedback is critical:
+The dock has full frosted glass treatment with extra-rounded corners (32px radius) and a deep shadow.
 
-**Listening state:**
-- Subtle waveform at bottom of screen
-- Particle field responds to audio amplitude
-- Gentle pulsing glow around screen edges
+### 5. The Conversation View
 
-**Speaking state:**
-- Text appears as the agent speaks
-- Waveform shows the agent's voice
-- Cards may appear alongside speech for visual context
+When a message is sent, the screen transitions to conversation view:
 
-**Thinking state:**
-- Particles swirl gently (not a loading spinner)
-- Subtle haptic-like screen pulse
+- Scrollable message list with chat bubbles
+- User messages: accent-bordered glass bubbles, right-aligned
+- Agent messages: standard glass bubbles, left-aligned
+- **Typewriter effect** — agent responses reveal character by character
+- Text input in the conversation view syncs with the dock input
 
-### 5. The Dock
+### 6. Light/Dark Mode
 
-A minimal floating dock at the bottom, only visible on touch/mouse proximity:
+The shell supports both dark and light themes, toggled via the dock button.
 
-- **Voice button** — tap to talk (alternative to wake word)
-- **Text input** — pull up keyboard
-- **Quick actions** — context-dependent (e.g., music controls when playing)
-
-The dock auto-hides. It's not always visible. When you need it, it's there.
-
-## Visual Language
-
-### Color Palette
-
+**Dark theme (default)** — extracted from openclaw.ai CSS:
 ```
-Background:     #0A0A0F (near-black, not pure black — OLED friendly)
-Surface:        #1A1A2E (card backgrounds)
-Glass:          rgba(255, 255, 255, 0.08) (frosted glass overlay)
-Primary:        #6C63FF (OpenClaw purple — used sparingly)
-Text Primary:   #FFFFFF (pure white on dark)
-Text Secondary: #8888AA (muted, for metadata)
-Success:        #4ADE80 (green, for confirmations)
-Alert:          #FB923C (amber, for warnings)
-Error:          #F87171 (red, for errors)
+Background:     #050810 (deep navy-black)
+Surface:        #0a0f1a
+Elevated:       #111827
+Coral Bright:   #ff4d4d
+Coral Mid:      #e63946
+Coral Dark:     #991b1b
+Cyan Bright:    #00e5cc
+Cyan Mid:       #14b8a6
+Text Primary:   #f0f4ff
+Text Secondary: #8892b0
+Text Muted:     #5a6480
 ```
 
-Dark mode only. No light mode. The device is an ambient presence, not a laptop screen.
+**Light theme:**
+```
+Background:     #fcfeff
+Surface:        #ffffff
+Elevated:       #f5f9ff
+Coral Bright:   #ef4b58
+Coral Mid:      #de3f4d
+Coral Dark:     #c43645
+Cyan Bright:    #008f87
+Cyan Mid:       #00766e
+Text Primary:   #0b1220
+Text Secondary: #2e405c
+Text Muted:     #5f7290
+```
 
-### Typography
+Both themes include matching semi-transparent surface colors for cards, overlays, and borders.
+
+All components adapt to the current theme via `OpenClawPalette::from_mode()`. The generative background reduces opacity in light mode for readability.
+
+## Gateway Integration
+
+The shell communicates with the OpenClaw gateway for agent interactions.
+
+### Architecture
 
 ```
-Display:    Inter Display, 72px — time, hero text
-Heading:    Inter, 24px semibold — card titles
-Body:       Inter, 16px regular — content
-Caption:    Inter, 12px medium — metadata, timestamps
-Mono:       JetBrains Mono, 14px — code blocks
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────┐
+│  Shell UI (iced) │────▶│  Gateway Module   │────▶│  OpenClaw   │
+│                  │◀────│  (gateway.rs)     │◀────│  Gateway    │
+│  - Ambient view  │     │                   │     │  :3000      │
+│  - Conversation  │     │  Mock mode:       │     └─────────────┘
+│  - Cards         │     │  - Canned replies │
+│  - Dock          │     │  - Fake notifs    │
+└─────────────────┘     └──────────────────┘
 ```
 
-### Motion
+### Modes
 
-All animations use spring physics, not ease-in-out:
-- **Stiffness:** 200 (default), 400 (snappy, for small elements)
-- **Damping:** 20 (default), 30 (less bounce)
-- **Mass:** 1.0
+**Mock mode** (`--mock` flag or `OPENCLAW_MOCK=1`):
+- Simulates agent responses with context-aware canned replies
+- Generates periodic notification cards (every 30s)
+- No network calls — good for development and demo
 
-No animation longer than 400ms. Nothing should feel slow.
+**Real mode** (default):
+- Connects to `http://localhost:3000` (or `OPENCLAW_GATEWAY_URL`)
+- Sends user messages via HTTP POST
+- Receives agent responses and channel events
+- Incoming notifications create typed cards
 
-### Spacing
+### Event Flow
 
-8px grid. Everything aligns to multiples of 8. No exceptions.
+1. User types in dock → `DockMessage::Submit`
+2. App calls `gateway.send_message(text)`
+3. Gateway produces `GatewayEvent::AgentResponse(text)`
+4. On next tick, `drain_events()` processes all pending events
+5. Agent responses become `ChatMessage` entries with typewriter effect
+6. Notifications become `Card` entries that slide in
+
+## Spacing & Typography
+
+8px grid. Everything aligns to multiples of 8.
+
+```
+Display:    72px — time, hero text
+Heading:    24px — card titles
+Body:       16px — content
+Caption:    12px — metadata, timestamps
+```
+
+Target fonts (from openclaw.ai):
+- Display: "Clash Display"
+- Body: "Satoshi"
+- Mono: "SF Mono", "JetBrains Mono"
 
 ## Screen States
 
@@ -129,99 +179,26 @@ No animation longer than 400ms. Nothing should feel slow.
 │                                         │
 │          AMBIENT STATE                  │
 │                                         │
-│    Beautiful generative background      │
-│    Time / Date / Weather gradient       │
-│    Status dots (connectivity, etc.)     │
+│    Aurora generative background         │
+│    Time / Date centered                 │
+│    Status dots (top-left)               │
+│    Notification cards (right panel)     │
 │                                         │
-│                                    ·──  │ ← Dock hint (line)
+│  [🎤] [__text input__] [→] [☀]         │ ← Dock (always visible)
 └─────────────────────────────────────────┘
-         │                    │
-    voice/touch          notification
-         ↓                    ↓
-┌──────────────────┐ ┌──────────────────┐
-│ CONVERSATION     │ │ CARD OVERLAY     │
-│                  │ │                  │
-│ Active agent     │ │ Notification     │
-│ interaction      │ │ card(s) appear   │
-│                  │ │ over ambient     │
-│ Text + voice     │ │                  │
-│ visualization    │ │ Auto-dismiss or  │
-│                  │ │ swipe away       │
-│ [Dock visible]   │ │                  │
-└──────────────────┘ └──────────────────┘
          │
-    "show me X"
+    type + send
          ↓
-┌──────────────────┐
-│ FOCUS VIEW       │
-│                  │
-│ Full-screen      │
-│ content:         │
-│ - Browser        │
-│ - Camera feed    │
-│ - Document       │
-│ - Media player   │
-│                  │
-│ "go back" to     │
-│ return           │
-└──────────────────┘
+┌──────────────────────────────────────────┐
+│ CONVERSATION VIEW                        │
+│                                          │
+│ Scrollable chat bubbles                  │
+│ User (right, accent) ←→ Agent (left)     │
+│ Typewriter reveal on agent messages      │
+│                                          │
+│  [🎤] [__text input__] [→] [☀]          │
+└──────────────────────────────────────────┘
 ```
-
-## Interaction Patterns
-
-### Voice Commands (Natural Language)
-
-No command syntax. Just talk:
-
-- "What's on my calendar today?" → Cards appear with events
-- "Play some music" → Media card appears, audio plays
-- "Turn the screen off" → Screen dims to sleep
-- "Show me the weather this week" → Weather card expands to forecast
-- "Read my messages" → Agent reads unread messages, cards appear
-- "Set a timer for 20 minutes" → Timer card pins to ambient view
-- "Good night" → Screen goes dark, notifications muted until morning
-
-### Touch/Mouse (Secondary)
-
-- **Swipe up** from bottom → Dock appears
-- **Swipe left/right** on card → Dismiss
-- **Tap card** → Expand for detail
-- **Long press** → Quick actions menu
-- **Two finger pull down** → Quick settings (WiFi, brightness, volume)
-
-### Physical Buttons (Hardware-Dependent)
-
-- **Power button** — screen on/off (not shutdown)
-- **Volume** — system volume
-- **Dedicated voice button** (if hardware supports) — push-to-talk
-
-## Responsive Design
-
-The shell must work across screen sizes:
-
-| Device | Resolution | Layout |
-|--------|-----------|--------|
-| 7" touchscreen (Pi) | 1024×600 | Single column, larger touch targets |
-| 10" tablet display | 1280×800 | Single column, comfortable spacing |
-| Monitor (desk) | 1920×1080+ | Multi-column cards, more ambient space |
-| TV/large display | 3840×2160 | Living room mode, huge typography |
-
-## Accessibility
-
-- **High contrast mode** — available via voice command
-- **Font scaling** — agent adjusts based on user preference
-- **Screen reader** — agent IS the screen reader
-- **Reduced motion** — disable particle effects, use fades instead of springs
-- **Color blind modes** — adjusted palette available
-
-## Inspiration / References
-
-- Apple Dynamic Island — contextual UI that adapts
-- Nothing OS Glyph — subtle, beautiful notification system  
-- Google Ambient Mode — clock/photo/weather display
-- Teenage Engineering TP-7 — hardware UI done right
-- Dieter Rams — "less, but better"
-- Calm technology — technology that doesn't demand attention
 
 ## Anti-Patterns (Things We Will Never Do)
 
@@ -234,3 +211,13 @@ The shell must work across screen sizes:
 - ❌ Hamburger menus
 - ❌ Tutorial overlays on first boot
 - ❌ App store / marketplace UI
+
+## Inspiration / References
+
+- Apple Dynamic Island — contextual UI that adapts
+- Nothing OS Glyph — subtle, beautiful notification system
+- Google Ambient Mode — clock/photo/weather display
+- Teenage Engineering TP-7 — hardware UI done right
+- Dieter Rams — "less, but better"
+- Calm technology — technology that doesn't demand attention
+- shadertoy.com aurora effects — for the generative background aesthetic
