@@ -2,7 +2,7 @@
 
 An AI-native operating system built on NixOS. Your agent isn't an app — it's the entire experience.
 
-> **Status:** Research & Design Phase
+> **Status:** Active Development — Shell UI prototype in progress
 
 ## What is this?
 
@@ -10,17 +10,67 @@ OpenClaw OS is a purpose-built operating system where your AI agent is the prima
 
 Think of it as what would happen if Apple designed an OS where Siri actually worked — and was the entire point.
 
-## Why?
+## Quick Start
 
-OpenClaw already integrates with messaging, browsers, cameras, calendars, files, code, and more. But it still runs as a service on someone else's OS. That means:
+### Prerequisites
 
-- Users fight with systemd, npm, Node.js versions
-- The agent has to work around the OS instead of with it
-- No control over the boot experience, the shell, the visual layer
-- Voice is bolted on, not native
-- Updates require CLI knowledge
+**Rust toolchain** (1.75+):
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+source "$HOME/.cargo/env"
+```
 
-An OS changes all of that. Plug in a device, power on, and you're talking to your agent.
+**System dependencies:**
+
+macOS:
+```bash
+brew install pkg-config
+```
+
+Linux (Ubuntu/Debian):
+```bash
+sudo apt install -y pkg-config libwayland-dev libxkbcommon-dev libvulkan-dev
+```
+
+NixOS:
+```bash
+cd nix && nix develop
+```
+
+### Build & Run
+
+```bash
+cd shell
+
+# Debug build
+cargo build
+
+# Run the shell UI
+cargo run
+
+# Release build (optimized)
+cargo build --release
+
+# Check without building (useful on headless servers)
+cargo check
+```
+
+### Cross-compile for Raspberry Pi
+
+```bash
+rustup target add aarch64-unknown-linux-gnu
+cargo build --release --target aarch64-unknown-linux-gnu
+```
+
+### Test in a NixOS VM (QEMU)
+
+```bash
+cd nix
+# Build the VM image
+nix build .#nixosConfigurations.openclaw-x86.config.system.build.vm
+# Run it
+./result/bin/run-openclaw-x86-vm
+```
 
 ## Design Principles
 
@@ -32,26 +82,58 @@ An OS changes all of that. Plug in a device, power on, and you're talking to you
 
 ## Architecture
 
-See [docs/architecture.md](docs/architecture.md) for the full technical design.
-
-## Repo Structure
+Four layers, each replaceable and independently testable:
 
 ```
-├── docs/               # Design documents and research
-│   ├── architecture.md     # Technical architecture (4-layer system)
-│   ├── ui-design.md        # Interface design & UX (Apple-level polish)
-│   ├── voice.md            # Voice pipeline (always-on, wake word → TTS)
-│   ├── first-boot.md       # Setup wizard (name agent, pick voice, connect)
-│   ├── offline-tts.md      # Offline TTS research (Chatterbox, Kokoro, Qwen3)
-│   ├── capability-cards.md # Every OpenClaw feature mapped to a card
-│   ├── rust-iced-deep-dive.md  # Why Rust + Iced, full technical analysis
-│   └── why-not-web.md      # Rationale for native over Chrome kiosk
-├── nix/                # NixOS configuration
-│   ├── flake.nix       # System flake
-│   └── modules/        # Custom NixOS modules
-├── shell/              # Custom shell UI (Rust + Iced)
-├── voice/              # Voice pipeline
-└── assets/             # Branding, icons, wallpapers
+┌─────────────────────────────────────────────────┐
+│                  SHELL UI                        │
+│        Custom compositor + Iced/Rust UI          │
+│     Ambient display · Cards · Visualizations     │
+├─────────────────────────────────────────────────┤
+│                VOICE PIPELINE                    │
+│   Wake word → VAD → STT → Agent → TTS → Audio   │
+├─────────────────────────────────────────────────┤
+│              OPENCLAW GATEWAY                    │
+│     Agent runtime · Tools · Integrations         │
+├─────────────────────────────────────────────────┤
+│                  NIXOS BASE                      │
+│    Kernel · Drivers · Networking · Services      │
+└─────────────────────────────────────────────────┘
+```
+
+See [docs/architecture.md](docs/architecture.md) for the full technical design.
+
+## Project Structure
+
+```
+├── README.md
+├── docs/                   # Design documents and research
+│   ├── architecture.md         # Technical architecture (4-layer system)
+│   ├── ui-design.md            # Interface design & UX
+│   ├── voice.md                # Voice pipeline design
+│   ├── first-boot.md           # Setup wizard flow
+│   ├── offline-tts.md          # Offline TTS research
+│   ├── capability-cards.md     # OpenClaw features → cards
+│   ├── rust-iced-deep-dive.md  # Why Rust + Iced
+│   └── why-not-web.md          # Native vs Chrome kiosk rationale
+├── shell/                  # Shell UI (Rust + Iced 0.13)
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs             # App entry, TEA architecture
+│       ├── theme.rs            # Colors, fonts, spacing constants
+│       ├── ambient.rs          # Ambient state (clock, status dots)
+│       ├── cards.rs            # Card system (message, alert, status, info)
+│       ├── conversation.rs     # Conversation view with typewriter effect
+│       ├── dock.rs             # Floating dock (voice, text toggle)
+│       └── widgets/
+│           ├── mod.rs
+│           ├── particle_field.rs   # Canvas-based particle animation
+│           └── glass_card.rs       # Frosted glass container styling
+├── nix/                    # NixOS configuration
+│   ├── flake.nix               # System flake + dev shell
+│   └── modules/                # Custom NixOS modules
+├── voice/                  # Voice pipeline (planned)
+└── assets/                 # Branding, icons, wallpapers
 ```
 
 ## Target Hardware

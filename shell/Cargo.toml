@@ -1,0 +1,10 @@
+[package]
+name = "openclaw-shell"
+version = "0.1.0"
+edition = "2021"
+description = "OpenClaw OS Shell — ambient display, cards, and conversation UI"
+
+[dependencies]
+iced = { version = "0.13", features = ["canvas", "tokio", "image"] }
+chrono = "0.4"
+rand = "0.8"
