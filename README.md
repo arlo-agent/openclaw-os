@@ -38,9 +38,14 @@ See [docs/architecture.md](docs/architecture.md) for the full technical design.
 
 ```
 ├── docs/               # Design documents and research
-│   ├── architecture.md # Technical architecture
-│   ├── ui-design.md    # Interface design & UX
-│   └── voice.md        # Voice pipeline design
+│   ├── architecture.md     # Technical architecture (4-layer system)
+│   ├── ui-design.md        # Interface design & UX (Apple-level polish)
+│   ├── voice.md            # Voice pipeline (always-on, wake word → TTS)
+│   ├── first-boot.md       # Setup wizard (name agent, pick voice, connect)
+│   ├── offline-tts.md      # Offline TTS research (Chatterbox, Kokoro, Qwen3)
+│   ├── capability-cards.md # Every OpenClaw feature mapped to a card
+│   ├── rust-iced-deep-dive.md  # Why Rust + Iced, full technical analysis
+│   └── why-not-web.md      # Rationale for native over Chrome kiosk
 ├── nix/                # NixOS configuration
 │   ├── flake.nix       # System flake
 │   └── modules/        # Custom NixOS modules
