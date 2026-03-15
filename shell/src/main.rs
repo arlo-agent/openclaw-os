@@ -242,7 +242,8 @@ impl App {
         };
 
         let dock_view =
-            dock::view_dock(&self.dock_input, self.listening, &palette).map(Message::Dock);
+            dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode)
+                .map(Message::Dock);
 
         let layout = column![
             container(main_content)

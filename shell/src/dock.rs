@@ -1,4 +1,4 @@
-use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
+use crate::theme::{self, OpenClawPalette, ThemeMode, BORDER_RADIUS};
 use crate::widgets::glass_card;
 use iced::widget::{button, container, row, text, text_input};
 use iced::{Alignment, Color, Element, Length, Padding, Shadow, Vector};
@@ -17,6 +17,7 @@ pub fn view_dock<'a>(
     input_value: &str,
     _listening: bool,
     palette: &OpenClawPalette,
+    theme_mode: ThemeMode,
 ) -> Element<'a, DockMessage> {
     let p = *palette;
 
@@ -33,7 +34,7 @@ pub fn view_dock<'a>(
         .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
         .size(theme::FONT_BODY);
 
-    // Send button (right) — only visually active when there's text
+    // Send button — only active when there's text
     let send_btn = if input_value.is_empty() {
         button(text("→").size(18).color(p.text_muted))
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
@@ -45,10 +46,21 @@ pub fn view_dock<'a>(
             .style(button::text)
     };
 
+    // Theme toggle (sun/moon icon)
+    let theme_icon = match theme_mode {
+        ThemeMode::Dark => "☀",  // show sun (to switch to light)
+        ThemeMode::Light => "🌙", // show moon (to switch to dark)
+    };
+    let theme_btn = button(text(theme_icon).size(18).color(p.text_secondary))
+        .on_press(DockMessage::ToggleTheme)
+        .padding(Padding::from([theme::GRID, theme::GRID * 1.0]))
+        .style(button::text);
+
     let dock_content = row![
         mic_btn,
         container(input).width(Length::Fill),
         send_btn,
+        theme_btn,
     ]
     .spacing(theme::GRID as u16 / 2)
     .align_y(Alignment::Center)
@@ -59,7 +71,7 @@ pub fn view_dock<'a>(
         let base = glass_card::glass_container_with_palette(&p);
         container::Style {
             border: iced::Border {
-                radius: (BORDER_RADIUS * 2.0).into(), // extra round for pill
+                radius: (BORDER_RADIUS * 2.0).into(),
                 ..base.border
             },
             shadow: Shadow {
@@ -79,10 +91,10 @@ pub fn view_dock<'a>(
     )
     .center_x(Length::Fill)
     .padding(Padding {
-            top: 0.0,
-            right: theme::GRID * 3.0,
-            bottom: theme::GRID * 2.0,
-            left: theme::GRID * 3.0,
-        })
+        top: 0.0,
+        right: theme::GRID * 3.0,
+        bottom: theme::GRID * 2.0,
+        left: theme::GRID * 3.0,
+    })
     .into()
 }
