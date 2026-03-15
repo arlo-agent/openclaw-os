@@ -34,10 +34,10 @@ struct App {
     particles: ParticleField,
     cards: Vec<Card>,
     chat_messages: Vec<ChatMessage>,
-    chat_input: String,
-    show_dock: bool,
+    dock_input: String,
     connected: bool,
     agent_active: bool,
+    listening: bool,
     window_size: (f32, f32),
     theme_mode: ThemeMode,
 }
@@ -75,10 +75,10 @@ impl Default for App {
             particles: ParticleField::new(),
             cards: demo_cards,
             chat_messages: Vec::new(),
-            chat_input: String::new(),
-            show_dock: true,
+            dock_input: String::new(),
             connected: true,
             agent_active: true,
+            listening: false,
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
         }
@@ -93,6 +93,25 @@ impl App {
     fn theme(&self) -> Theme {
         let p = self.palette();
         Theme::custom("OpenClaw".into(), p.to_iced_palette())
+    }
+
+    fn send_message(&mut self) {
+        if !self.dock_input.is_empty() {
+            let user_msg = ChatMessage::new(true, self.dock_input.clone());
+            self.chat_messages.push(user_msg);
+
+            let response = format!(
+                "I heard you say: \"{}\". I'm the OpenClaw agent — voice pipeline coming soon!",
+                self.dock_input
+            );
+            let agent_msg = ChatMessage::new(false, response);
+            self.chat_messages.push(agent_msg);
+
+            self.dock_input.clear();
+
+            // Switch to conversation view when sending a message
+            self.view = AppView::Conversation;
+        }
     }
 
     fn update(&mut self, message: Message) {
@@ -115,36 +134,25 @@ impl App {
             }
             Message::Conversation(conv_msg) => match conv_msg {
                 ConversationMessage::InputChanged(val) => {
-                    self.chat_input = val;
+                    self.dock_input = val;
                 }
                 ConversationMessage::Submit => {
-                    if !self.chat_input.is_empty() {
-                        let user_msg = ChatMessage::new(true, self.chat_input.clone());
-                        self.chat_messages.push(user_msg);
-
-                        let response = format!(
-                            "I heard you say: \"{}\". I'm the OpenClaw agent — voice pipeline coming soon!",
-                            self.chat_input
-                        );
-                        let agent_msg = ChatMessage::new(false, response);
-                        self.chat_messages.push(agent_msg);
-
-                        self.chat_input.clear();
-                    }
+                    self.send_message();
                 }
             },
             Message::Dock(dock_msg) => match dock_msg {
                 DockMessage::ToggleVoice => {
-                    self.view = match self.view {
-                        AppView::Ambient => AppView::Ambient,
-                        AppView::Conversation => AppView::Ambient,
-                    };
+                    self.listening = !self.listening;
                 }
-                DockMessage::ToggleText => {
-                    self.view = match self.view {
-                        AppView::Ambient => AppView::Conversation,
-                        AppView::Conversation => AppView::Ambient,
-                    };
+                DockMessage::InputChanged(val) => {
+                    self.dock_input = val;
+                }
+                DockMessage::Submit => {
+                    self.send_message();
+                }
+                DockMessage::ToggleTheme => {
+                    self.theme_mode = self.theme_mode.toggle();
+                    self.particles.set_theme_mode(self.theme_mode);
                 }
             },
         }
@@ -191,12 +199,13 @@ impl App {
                 row![left, right_panel].height(Length::Fill).into()
             }
             AppView::Conversation => {
-                conversation::view_conversation(&self.chat_messages, &self.chat_input, &palette)
+                conversation::view_conversation(&self.chat_messages, &self.dock_input, &palette)
                     .map(Message::Conversation)
             }
         };
 
-        let dock_view = dock::view_dock(self.show_dock, &palette).map(Message::Dock);
+        let dock_view =
+            dock::view_dock(&self.dock_input, self.listening, &palette).map(Message::Dock);
 
         let layout = column![
             container(main_content)

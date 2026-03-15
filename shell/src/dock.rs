@@ -1,41 +1,88 @@
-use crate::theme::{self, OpenClawPalette};
+use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
 use crate::widgets::glass_card;
-use iced::widget::{button, container, row, text, Space};
-use iced::{Alignment, Element, Length, Padding};
+use iced::widget::{button, container, row, text, text_input};
+use iced::{Alignment, Color, Element, Length, Padding, Shadow, Vector};
 
 #[derive(Debug, Clone)]
 pub enum DockMessage {
     ToggleVoice,
-    ToggleText,
+    InputChanged(String),
+    Submit,
+    ToggleTheme,
 }
 
-pub fn view_dock<'a>(show: bool, palette: &OpenClawPalette) -> Element<'a, DockMessage> {
-    if !show {
-        return Space::new(0, 0).into();
-    }
-
+/// Render the redesigned pill-shaped dock with inline text input.
+/// Always visible at the bottom center.
+pub fn view_dock<'a>(
+    input_value: &str,
+    _listening: bool,
+    palette: &OpenClawPalette,
+) -> Element<'a, DockMessage> {
     let p = *palette;
 
-    let voice_btn = button(text("🎤").size(20).color(p.text_primary))
+    // Mic button (left)
+    let mic_btn = button(text("🎤").size(20).color(p.text_primary))
         .on_press(DockMessage::ToggleVoice)
-        .padding(Padding::from(theme::GRID * 1.5))
+        .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
         .style(button::text);
 
-    let text_btn = button(text("⌨").size(20).color(p.text_primary))
-        .on_press(DockMessage::ToggleText)
-        .padding(Padding::from(theme::GRID * 1.5))
-        .style(button::text);
+    // Text input (center)
+    let input = text_input("Talk to your agent...", input_value)
+        .on_input(DockMessage::InputChanged)
+        .on_submit(DockMessage::Submit)
+        .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
+        .size(theme::FONT_BODY);
 
-    let dock_content = row![voice_btn, Space::with_width(theme::GRID * 2.0), text_btn]
-        .align_y(Alignment::Center);
+    // Send button (right) — only visually active when there's text
+    let send_btn = if input_value.is_empty() {
+        button(text("→").size(18).color(p.text_muted))
+            .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
+            .style(button::text)
+    } else {
+        button(text("→").size(18).color(p.coral_bright))
+            .on_press(DockMessage::Submit)
+            .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
+            .style(button::text)
+    };
 
-    let dock_style = glass_card::glass_container_with_palette(&p);
+    let dock_content = row![
+        mic_btn,
+        container(input).width(Length::Fill),
+        send_btn,
+    ]
+    .spacing(theme::GRID as u16 / 2)
+    .align_y(Alignment::Center)
+    .width(Length::Fill);
+
+    // Glass pill style
+    let pill_style = {
+        let base = glass_card::glass_container_with_palette(&p);
+        container::Style {
+            border: iced::Border {
+                radius: (BORDER_RADIUS * 2.0).into(), // extra round for pill
+                ..base.border
+            },
+            shadow: Shadow {
+                color: Color::from_rgba(0.0, 0.0, 0.0, 0.5),
+                offset: Vector::new(0.0, 6.0),
+                blur_radius: 24.0,
+            },
+            ..base
+        }
+    };
+
     container(
         container(dock_content)
-            .padding(Padding::from([theme::GRID, theme::GRID * 3.0]))
-            .style(move |_theme: &_| dock_style),
+            .padding(Padding::from([theme::GRID * 0.5, theme::GRID * 1.5]))
+            .style(move |_theme: &_| pill_style)
+            .max_width(640),
     )
     .center_x(Length::Fill)
-    .padding(Padding::from(theme::GRID * 2.0))
+    .padding(Padding {
+            top: 0.0,
+            right: theme::GRID * 3.0,
+            bottom: theme::GRID * 2.0,
+            left: theme::GRID * 3.0,
+        })
     .into()
 }
