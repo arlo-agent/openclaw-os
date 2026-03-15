@@ -1,21 +1,31 @@
-//! Generative aurora background — smooth organic flow with simplex noise.
+//! Generative ambient background — soft glowing orbs with subtle flow.
 //!
-//! Renders layered aurora-like glow using flowing curves and soft particles.
-//! No rectangles, no grids — everything is curves and circles.
+//! Renders a calm, organic background with:
+//! - Large soft gradient orbs that drift slowly (aurora-like)
+//! - Small floating particles with soft glow
+//! - No hard lines, no grids, no visible edges
+//! - Everything uses filled circles with alpha for smoothness
 
 use crate::theme::{OpenClawPalette, ThemeMode};
 use iced::mouse;
-use iced::widget::canvas::{self, Cache, Canvas, Frame, Geometry, Path, Stroke};
+use iced::widget::canvas::{self, Cache, Canvas, Frame, Geometry, Path};
 use iced::{Color, Element, Length, Point, Rectangle, Renderer, Theme};
 use noise::{NoiseFn, OpenSimplex};
 use rand::Rng;
 
-/// Soft flowing particles
-const PARTICLE_COUNT: usize = 100;
-/// Number of aurora flow lines
-const FLOW_LINES: usize = 18;
-/// Points per flow line
-const LINE_POINTS: usize = 80;
+/// Large ambient orbs (aurora-like glow)
+const ORB_COUNT: usize = 6;
+/// Small floating particles
+const PARTICLE_COUNT: usize = 60;
+
+struct Orb {
+    x: f32,
+    y: f32,
+    base_x: f32,
+    base_y: f32,
+    radius: f32,
+    color_phase: f32,  // 0.0 = coral, 1.0 = cyan
+}
 
 struct Particle {
     x: f32,
@@ -24,14 +34,17 @@ struct Particle {
     vy: f32,
     size: f32,
     phase: f32,
+    color_phase: f32,
 }
 
 pub struct ParticleField {
     noise: OpenSimplex,
     time: f64,
     cache: Cache,
+    orbs: Vec<Orb>,
     particles: Vec<Particle>,
     theme_mode: ThemeMode,
+    initialized: bool,
 }
 
 impl ParticleField {
@@ -40,8 +53,10 @@ impl ParticleField {
             noise: OpenSimplex::new(42),
             time: 0.0,
             cache: Cache::new(),
+            orbs: Vec::new(),
             particles: Vec::new(),
             theme_mode: ThemeMode::Dark,
+            initialized: false,
         }
     }
 
@@ -50,44 +65,82 @@ impl ParticleField {
     }
 
     pub fn tick(&mut self, width: f32, height: f32) {
-        self.time += 0.006;
+        if width < 1.0 || height < 1.0 {
+            return;
+        }
 
-        // Initialize particles
-        if self.particles.is_empty() && width > 1.0 && height > 1.0 {
+        self.time += 0.004;
+
+        // Initialize once
+        if !self.initialized {
+            self.initialized = true;
             let mut rng = rand::thread_rng();
+
+            // Create large ambient orbs spread across the screen
+            self.orbs = (0..ORB_COUNT)
+                .map(|i| {
+                    let t = i as f32 / ORB_COUNT as f32;
+                    let bx = t * width * 0.8 + width * 0.1;
+                    let by = rng.gen_range(height * 0.15..height * 0.85);
+                    Orb {
+                        x: bx,
+                        y: by,
+                        base_x: bx,
+                        base_y: by,
+                        radius: rng.gen_range(width * 0.12..width * 0.25),
+                        color_phase: t,
+                    }
+                })
+                .collect();
+
+            // Create small particles
             self.particles = (0..PARTICLE_COUNT)
                 .map(|_| Particle {
                     x: rng.gen_range(0.0..width),
                     y: rng.gen_range(0.0..height),
-                    vx: rng.gen_range(-0.15..0.15),
-                    vy: rng.gen_range(-0.1..0.1),
-                    size: rng.gen_range(1.5..4.0),
+                    vx: rng.gen_range(-0.08..0.08),
+                    vy: rng.gen_range(-0.06..0.06),
+                    size: rng.gen_range(1.0..3.0),
                     phase: rng.gen_range(0.0..std::f32::consts::TAU),
+                    color_phase: rng.gen_range(0.0..1.0),
                 })
                 .collect();
         }
 
-        // Move particles using noise-based flow
+        let w = width;
+        let h = height;
+
+        // Drift orbs with noise
+        for (i, orb) in self.orbs.iter_mut().enumerate() {
+            let seed = i as f64 * 7.3;
+            let nx = self.noise.get([seed, self.time * 0.15, 0.0]) as f32;
+            let ny = self.noise.get([seed + 100.0, self.time * 0.12, 0.0]) as f32;
+            orb.x = orb.base_x + nx * w * 0.08;
+            orb.y = orb.base_y + ny * h * 0.08;
+            // Slowly shift color
+            orb.color_phase = (orb.color_phase + 0.0003) % 1.0;
+        }
+
+        // Move particles with gentle noise-based flow
         for p in &mut self.particles {
-            let nx = p.x as f64 * 0.002;
-            let ny = p.y as f64 * 0.002;
-            let angle = self.noise.get([nx, ny, self.time * 0.3]) as f32 * std::f32::consts::TAU;
-            
-            p.vx += angle.cos() * 0.02;
-            p.vy += angle.sin() * 0.02;
-            // Damping
-            p.vx *= 0.98;
-            p.vy *= 0.98;
-            
+            let nx = p.x as f64 * 0.003;
+            let ny = p.y as f64 * 0.003;
+            let angle = self.noise.get([nx, ny, self.time * 0.2]) as f32 * std::f32::consts::TAU;
+
+            p.vx += angle.cos() * 0.005;
+            p.vy += angle.sin() * 0.005;
+            p.vx *= 0.99;
+            p.vy *= 0.99;
+
             p.x += p.vx;
             p.y += p.vy;
-            p.phase += 0.01;
+            p.phase += 0.008;
 
-            // Wrap
-            if p.x < -10.0 { p.x += width + 20.0; }
-            if p.x > width + 10.0 { p.x -= width + 20.0; }
-            if p.y < -10.0 { p.y += height + 20.0; }
-            if p.y > height + 10.0 { p.y -= height + 20.0; }
+            // Wrap edges smoothly
+            if p.x < -20.0 { p.x += w + 40.0; }
+            if p.x > w + 20.0 { p.x -= w + 40.0; }
+            if p.y < -20.0 { p.y += h + 40.0; }
+            if p.y > h + 20.0 { p.y -= h + 40.0; }
         }
 
         self.cache.clear();
@@ -100,7 +153,6 @@ impl ParticleField {
             .into()
     }
 
-    /// Interpolate between coral and cyan
     fn blend_color(&self, t: f32, alpha: f32, palette: &OpenClawPalette) -> Color {
         let t = t.clamp(0.0, 1.0);
         let c = palette.coral_bright;
@@ -126,134 +178,51 @@ impl canvas::Program<()> for ParticleField {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let geometry = self.cache.draw(renderer, bounds.size(), |frame: &mut Frame| {
-            let w = bounds.width;
-            let h = bounds.height;
             let palette = OpenClawPalette::from_mode(self.theme_mode);
-
             let is_dark = matches!(self.theme_mode, ThemeMode::Dark);
-            let alpha_mult = if is_dark { 1.0 } else { 0.4 };
 
-            // === Layer 1: Smooth flowing aurora curves ===
-            // Each line starts from the left and flows across, displaced by noise
-            for i in 0..FLOW_LINES {
-                let base_y = (i as f32 + 0.5) / FLOW_LINES as f32 * h;
-                let line_seed = i as f64 * 3.14;
-                let color_t = ((i as f32 / FLOW_LINES as f32) + self.time as f32 * 0.03) % 1.0;
+            // Breathing pulse
+            let breath = ((self.time * 0.15).sin() * 0.5 + 0.5) as f32;
 
-                // Breathing pulse per line
-                let breath = ((self.time * 0.12 + line_seed * 0.5).sin() * 0.5 + 0.5) as f32;
+            // === Layer 1: Large soft ambient orbs ===
+            // These create the aurora-like color atmosphere
+            for orb in &self.orbs {
+                let base_alpha = if is_dark { 0.06 } else { 0.04 };
+                let alpha = base_alpha * (0.7 + breath * 0.3);
 
-                // Build smooth curve points
-                let mut points: Vec<Point> = Vec::with_capacity(LINE_POINTS);
-                for j in 0..LINE_POINTS {
-                    let t = j as f64 / LINE_POINTS as f64;
-                    let x = t as f32 * w;
+                // Draw multiple concentric circles with decreasing alpha (soft glow)
+                let steps = 8;
+                for step in (0..steps).rev() {
+                    let t = step as f32 / steps as f32;
+                    let r = orb.radius * (0.3 + t * 0.7);
+                    let a = alpha * (1.0 - t) * (1.0 - t); // quadratic falloff
+                    if a < 0.001 { continue; }
 
-                    // Multi-octave noise for vertical displacement
-                    let n1 = self.noise.get([
-                        t * 2.0 + line_seed,
-                        self.time * 0.15,
-                        i as f64 * 0.7,
-                    ]) as f32;
-                    let n2 = self.noise.get([
-                        t * 4.5 + line_seed + 100.0,
-                        self.time * 0.25,
-                        i as f64 * 0.7 + 50.0,
-                    ]) as f32;
-                    
-                    let displacement = (n1 * 0.65 + n2 * 0.35) * h * 0.15;
-                    let y = base_y + displacement;
-
-                    points.push(Point::new(x, y));
-                }
-
-                // Draw the curve as connected line segments with varying alpha
-                for pair in points.windows(2) {
-                    let p0 = pair[0];
-                    let p1 = pair[1];
-                    let seg_t = p0.x / w;
-
-                    // Fade at edges
-                    let edge_fade = (seg_t * 4.0).min(1.0) * ((1.0 - seg_t) * 4.0).min(1.0);
-
-                    let alpha = 0.06 * edge_fade * breath * alpha_mult;
-                    if alpha < 0.003 {
-                        continue;
-                    }
-
-                    let color = self.blend_color(color_t + seg_t * 0.2, alpha, &palette);
-
-                    // Main line
-                    let line = Path::line(p0, p1);
-                    frame.stroke(
-                        &line,
-                        Stroke::default()
-                            .with_color(color)
-                            .with_width(2.0),
-                    );
-
-                    // Wider glow beneath
-                    let glow_color = self.blend_color(color_t + seg_t * 0.2, alpha * 0.3, &palette);
-                    frame.stroke(
-                        &line,
-                        Stroke::default()
-                            .with_color(glow_color)
-                            .with_width(12.0),
-                    );
-
-                    // Even wider subtle wash
-                    let wash_color = self.blend_color(color_t + seg_t * 0.2, alpha * 0.08, &palette);
-                    frame.stroke(
-                        &line,
-                        Stroke::default()
-                            .with_color(wash_color)
-                            .with_width(40.0),
-                    );
+                    let circle = Path::circle(Point::new(orb.x, orb.y), r);
+                    frame.fill(&circle, self.blend_color(orb.color_phase, a, &palette));
                 }
             }
 
-            // === Layer 2: Soft glowing particles ===
+            // === Layer 2: Floating particles with glow ===
             for p in &self.particles {
-                let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
-                let alpha = (0.08 + pulse * 0.15) * alpha_mult;
-                let color_t = ((p.x / w + p.y / h) * 0.5 + self.time as f32 * 0.02) % 1.0;
+                let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.6;
+                let base_alpha = if is_dark { 0.15 } else { 0.1 };
+                let alpha = base_alpha * (0.4 + pulse);
+                let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
-                // Outer glow
-                let glow = Path::circle(Point::new(p.x, p.y), p.size * 4.0);
-                frame.fill(&glow, self.blend_color(color_t, alpha * 0.12, &palette));
+                // Outer glow (3 layers for smoothness)
+                let glow3 = Path::circle(Point::new(p.x, p.y), p.size * 6.0);
+                frame.fill(&glow3, self.blend_color(ct, alpha * 0.04, &palette));
 
-                // Inner bright core
+                let glow2 = Path::circle(Point::new(p.x, p.y), p.size * 3.5);
+                frame.fill(&glow2, self.blend_color(ct, alpha * 0.1, &palette));
+
+                let glow1 = Path::circle(Point::new(p.x, p.y), p.size * 2.0);
+                frame.fill(&glow1, self.blend_color(ct, alpha * 0.25, &palette));
+
+                // Core
                 let core = Path::circle(Point::new(p.x, p.y), p.size);
-                frame.fill(&core, self.blend_color(color_t, alpha, &palette));
-            }
-
-            // === Layer 3: Subtle connection lines between nearby particles ===
-            let connect_dist = 100.0_f32;
-            for i in 0..self.particles.len() {
-                for j in (i + 1)..self.particles.len() {
-                    let a = &self.particles[i];
-                    let b = &self.particles[j];
-                    let dx = a.x - b.x;
-                    let dy = a.y - b.y;
-                    let dist_sq = dx * dx + dy * dy;
-
-                    if dist_sq < connect_dist * connect_dist {
-                        let dist = dist_sq.sqrt();
-                        let alpha = (1.0 - dist / connect_dist) * 0.04 * alpha_mult;
-                        let color_t = ((a.x + b.x) / (2.0 * w) + self.time as f32 * 0.02) % 1.0;
-
-                        let line = Path::line(
-                            Point::new(a.x, a.y),
-                            Point::new(b.x, b.y),
-                        );
-                        frame.stroke(
-                            &line,
-                            Stroke::default()
-                                .with_color(self.blend_color(color_t, alpha, &palette))
-                                .with_width(0.5),
-                        );
-                    }
-                }
+                frame.fill(&core, self.blend_color(ct, alpha, &palette));
             }
         });
 

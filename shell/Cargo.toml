@@ -6,6 +6,7 @@ description = "OpenClaw OS Shell — ambient display, cards, and conversation UI
 
 [dependencies]
 iced = { version = "0.13", features = ["canvas", "tokio", "image"] }
+iced_fonts = { version = "0.1.1", features = ["bootstrap"] }
 chrono = "0.4"
 rand = "0.8"
 noise = "0.9"

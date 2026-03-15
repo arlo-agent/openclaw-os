@@ -2,6 +2,7 @@ use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length, Padding};
+use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
 #[derive(Debug, Clone)]
 pub struct ChatMessage {
@@ -100,7 +101,12 @@ pub fn view_conversation<'a>(
 
     // Back button at top
     let back_btn = button(
-        text("<  Back").size(theme::FONT_BODY).color(p.text_secondary),
+        row![
+            text(Bootstrap::ArrowLeft.to_string()).font(BOOTSTRAP_FONT).size(16).color(p.text_secondary),
+            Space::with_width(6),
+            text("Back").size(theme::FONT_BODY).color(p.text_secondary),
+        ]
+        .align_y(Alignment::Center),
     )
     .on_press(ConversationMessage::Back)
     .padding(Padding::from([theme::GRID * 0.5, theme::GRID]))

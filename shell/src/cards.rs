@@ -2,6 +2,7 @@ use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
+use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
 #[derive(Debug, Clone)]
 pub enum CardType {
@@ -91,10 +92,15 @@ pub fn view_cards<'a>(cards: &'a [Card], palette: &OpenClawPalette) -> Element<'
                     .size(theme::FONT_CAPTION)
                     .color(p.text_secondary),
                 Space::with_width(Length::Fill),
-                button(text("✕").size(14).color(p.text_secondary))
-                    .on_press(CardMessage::Dismiss(i))
-                    .padding(4)
-                    .style(button::text),
+                button(
+                    text(Bootstrap::XLg.to_string())
+                        .font(BOOTSTRAP_FONT)
+                        .size(12)
+                        .color(p.text_muted),
+                )
+                .on_press(CardMessage::Dismiss(i))
+                .padding(4)
+                .style(button::text),
             ]
             .align_y(Alignment::Center);
 

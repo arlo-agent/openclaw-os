@@ -15,11 +15,13 @@ use iced::{Element, Length, Padding, Size, Subscription, Theme};
 use std::time::{Duration, Instant};
 use theme::{OpenClawPalette, ThemeMode};
 use widgets::particle_field::ParticleField;
+extern crate iced_fonts;
 
 fn main() -> iced::Result {
     iced::application("OpenClaw OS", App::update, App::view)
         .subscription(App::subscription)
         .theme(App::theme)
+        .font(iced_fonts::BOOTSTRAP_FONT_BYTES)
         .window_size(Size::new(1280.0, 720.0))
         .antialiasing(true)
         .run()

@@ -2,6 +2,7 @@ use crate::theme::{self, OpenClawPalette, ThemeMode, BORDER_RADIUS};
 use crate::widgets::glass_card;
 use iced::widget::{button, container, row, text, text_input};
 use iced::{Alignment, Color, Element, Length, Padding, Shadow, Vector};
+use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
 #[derive(Debug, Clone)]
 pub enum DockMessage {
@@ -11,49 +12,53 @@ pub enum DockMessage {
     ToggleTheme,
 }
 
-/// Render the redesigned pill-shaped dock with inline text input.
-/// Always visible at the bottom center.
+/// Helper to create a Bootstrap icon text widget
+fn icon(i: Bootstrap, size: f32, color: Color) -> iced::widget::Text<'static> {
+    text(i.to_string()).font(BOOTSTRAP_FONT).size(size).color(color)
+}
+
+/// Render the pill-shaped dock with inline text input and icon buttons.
 pub fn view_dock<'a>(
     input_value: &str,
-    _listening: bool,
+    listening: bool,
     palette: &OpenClawPalette,
     theme_mode: ThemeMode,
 ) -> Element<'a, DockMessage> {
     let p = *palette;
 
-    // Mic button (left) — use text glyph, not emoji (emoji font missing on some systems)
-    let mic_label = if _listening { "MIC ON" } else { "MIC" };
-    let mic_color = if _listening { p.coral_bright } else { p.text_primary };
-    let mic_btn = button(text(mic_label).size(12).color(mic_color))
+    // Mic button
+    let mic_icon = if listening { Bootstrap::MicFill } else { Bootstrap::Mic };
+    let mic_color = if listening { p.coral_bright } else { p.text_primary };
+    let mic_btn = button(icon(mic_icon, 18.0, mic_color))
         .on_press(DockMessage::ToggleVoice)
         .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
         .style(button::text);
 
-    // Text input (center)
+    // Text input
     let input = text_input("Talk to your agent...", input_value)
         .on_input(DockMessage::InputChanged)
         .on_submit(DockMessage::Submit)
         .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
         .size(theme::FONT_BODY);
 
-    // Send button — only active when there's text
+    // Send button
     let send_btn = if input_value.is_empty() {
-        button(text(">").size(16).color(p.text_muted))
+        button(icon(Bootstrap::Send, 16.0, p.text_muted))
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
             .style(button::text)
     } else {
-        button(text(">").size(16).color(p.coral_bright))
+        button(icon(Bootstrap::SendFill, 16.0, p.coral_bright))
             .on_press(DockMessage::Submit)
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
             .style(button::text)
     };
 
     // Theme toggle
-    let theme_label = match theme_mode {
-        ThemeMode::Dark => "LIGHT",
-        ThemeMode::Light => "DARK",
+    let theme_icon = match theme_mode {
+        ThemeMode::Dark => Bootstrap::SunFill,
+        ThemeMode::Light => Bootstrap::MoonStarsFill,
     };
-    let theme_btn = button(text(theme_label).size(11).color(p.text_secondary))
+    let theme_btn = button(icon(theme_icon, 16.0, p.text_secondary))
         .on_press(DockMessage::ToggleTheme)
         .padding(Padding::from([theme::GRID * 0.5, theme::GRID]))
         .style(button::text);
