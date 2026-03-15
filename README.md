@@ -62,47 +62,57 @@ rustup target add aarch64-unknown-linux-gnu
 cargo build --release --target aarch64-unknown-linux-gnu
 ```
 
-### Test in a NixOS VM (QEMU)
+### Test the NixOS Configuration
 
-**1. Install Nix (if not already installed):**
+The NixOS config (`nix/`) defines the full OS image. Building it requires a Linux machine since NixOS targets Linux.
 
-macOS / Linux:
+#### Option A: Build on a Linux machine (recommended)
+
+On any x86_64 Linux box with Nix installed:
+
 ```bash
-# Official Nix installer (multi-user, recommended)
+# Install Nix (if not already)
 curl -L https://nixos.org/nix/install | sh
-
-# Restart your terminal, then enable flakes:
 mkdir -p ~/.config/nix
 echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
-```
 
-> **macOS note:** The installer creates a Nix volume on APFS. It's non-destructive and can be fully uninstalled later with `nix-uninstall`.
-
-**2. Install QEMU:**
-
-macOS:
-```bash
-brew install qemu
-```
-
-Linux (Ubuntu/Debian):
-```bash
-sudo apt install -y qemu-system-x86 qemu-utils
-```
-
-**3. Build and run the VM:**
-
-```bash
+# Build and run the VM
 cd nix
-
-# Build the VM image (first run downloads NixOS packages — may take a while)
 nix build .#nixosConfigurations.openclaw-x86.config.system.build.vm
-
-# Run it
 ./result/bin/run-openclaw-x86-vm
 ```
 
-> **Tip:** On Apple Silicon Macs, QEMU will use emulation (no KVM), so the VM will be slower than native. For day-to-day UI development, `cargo run` in `shell/` is much faster.
+#### Option B: Use UTM on macOS (no Nix needed)
+
+For quick testing on Apple Silicon, run a stock NixOS VM in [UTM](https://mac.getutm.app/):
+
+1. Download UTM from the App Store or https://mac.getutm.app/
+2. Download the NixOS minimal ISO (aarch64): https://nixos.org/download#nixos-iso
+3. Create a new VM in UTM → Linux → select the ISO → 4GB RAM, 20GB disk
+4. Boot, install NixOS, then clone this repo inside the VM and apply the config:
+
+```bash
+# Inside the NixOS VM
+nix-shell -p git
+git clone https://github.com/arlo-agent/openclaw-os.git
+cd openclaw-os/nix
+
+# Apply the OpenClaw OS config
+sudo nixos-rebuild switch --flake .#openclaw-x86
+```
+
+#### Option C: Remote Nix builder from macOS
+
+If you want `nix build` to work from macOS, set up a remote Linux builder:
+
+```bash
+# In ~/.config/nix/nix.conf (or /etc/nix/nix.conf)
+builders = ssh://your-linux-server x86_64-linux
+```
+
+See [NixOS Wiki: Distributed Builds](https://wiki.nixos.org/wiki/Distributed_build) for setup details.
+
+> **Note:** For day-to-day shell UI development, `cargo run` in `shell/` is the fastest loop — runs natively on macOS, no VM needed. Use VM testing when you need to validate NixOS integration (services, boot, voice pipeline).
 
 ## Design Principles
 
