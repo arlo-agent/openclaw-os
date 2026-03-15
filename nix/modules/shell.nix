@@ -51,7 +51,7 @@
     packages = with pkgs; [
       inter              # Primary UI font
       jetbrains-mono     # Code/mono font
-      noto-fonts-emoji   # Emoji support
+      noto-fonts-color-emoji   # Emoji support
     ];
     fontconfig = {
       defaultFonts = {
