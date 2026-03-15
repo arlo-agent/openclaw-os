@@ -64,13 +64,45 @@ cargo build --release --target aarch64-unknown-linux-gnu
 
 ### Test in a NixOS VM (QEMU)
 
+**1. Install Nix (if not already installed):**
+
+macOS / Linux:
+```bash
+# Official Nix installer (multi-user, recommended)
+curl -L https://nixos.org/nix/install | sh
+
+# Restart your terminal, then enable flakes:
+mkdir -p ~/.config/nix
+echo "experimental-features = nix-command flakes" >> ~/.config/nix/nix.conf
+```
+
+> **macOS note:** The installer creates a Nix volume on APFS. It's non-destructive and can be fully uninstalled later with `nix-uninstall`.
+
+**2. Install QEMU:**
+
+macOS:
+```bash
+brew install qemu
+```
+
+Linux (Ubuntu/Debian):
+```bash
+sudo apt install -y qemu-system-x86 qemu-utils
+```
+
+**3. Build and run the VM:**
+
 ```bash
 cd nix
-# Build the VM image
+
+# Build the VM image (first run downloads NixOS packages — may take a while)
 nix build .#nixosConfigurations.openclaw-x86.config.system.build.vm
+
 # Run it
 ./result/bin/run-openclaw-x86-vm
 ```
+
+> **Tip:** On Apple Silicon Macs, QEMU will use emulation (no KVM), so the VM will be slower than native. For day-to-day UI development, `cargo run` in `shell/` is much faster.
 
 ## Design Principles
 
