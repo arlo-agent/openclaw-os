@@ -1,6 +1,6 @@
 use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
-use iced::widget::{column, container, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length, Padding};
 
 #[derive(Debug, Clone)]
@@ -44,13 +44,13 @@ impl ChatMessage {
 
 #[derive(Debug, Clone)]
 pub enum ConversationMessage {
-    InputChanged(String),
-    Submit,
+    Back,
 }
 
+/// Render the conversation view — messages only (no input, dock handles that).
+/// Includes a back button to return to ambient.
 pub fn view_conversation<'a>(
     messages: &'a [ChatMessage],
-    input_value: &str,
     palette: &OpenClawPalette,
 ) -> Element<'a, ConversationMessage> {
     let p = *palette;
@@ -86,17 +86,28 @@ pub fn view_conversation<'a>(
         .max_width(500)
         .style(move |_theme: &_| bubble_style);
 
-        let row = row![Space::new(0, 0), bubble]
+        let aligned_row = row![Space::new(0, 0), bubble]
             .width(Length::Fill)
             .align_y(Alignment::End);
 
         msg_views.push(
-            container(row)
+            container(aligned_row)
                 .width(Length::Fill)
                 .align_x(alignment)
                 .into(),
         );
     }
+
+    // Back button at top
+    let back_btn = button(
+        text("<  Back").size(theme::FONT_BODY).color(p.text_secondary),
+    )
+    .on_press(ConversationMessage::Back)
+    .padding(Padding::from([theme::GRID * 0.5, theme::GRID]))
+    .style(button::text);
+
+    let header = container(back_btn)
+        .padding(Padding::from(theme::GRID));
 
     let messages_scroll = scrollable(
         column(msg_views)
@@ -105,17 +116,7 @@ pub fn view_conversation<'a>(
     )
     .height(Length::Fill);
 
-    let input_bar = container(
-        text_input("Type a message...", input_value)
-            .on_input(ConversationMessage::InputChanged)
-            .on_submit(ConversationMessage::Submit)
-            .padding(Padding::from(theme::GRID * 1.5))
-            .size(theme::FONT_BODY),
-    )
-    .padding(Padding::from(theme::GRID * 2.0))
-    .width(Length::Fill);
-
-    column![messages_scroll, input_bar]
+    column![header, messages_scroll]
         .spacing(0)
         .height(Length::Fill)
         .into()

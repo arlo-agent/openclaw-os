@@ -21,8 +21,10 @@ pub fn view_dock<'a>(
 ) -> Element<'a, DockMessage> {
     let p = *palette;
 
-    // Mic button (left)
-    let mic_btn = button(text("🎤").size(20).color(p.text_primary))
+    // Mic button (left) — use text glyph, not emoji (emoji font missing on some systems)
+    let mic_label = if _listening { "MIC ON" } else { "MIC" };
+    let mic_color = if _listening { p.coral_bright } else { p.text_primary };
+    let mic_btn = button(text(mic_label).size(12).color(mic_color))
         .on_press(DockMessage::ToggleVoice)
         .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
         .style(button::text);
@@ -36,24 +38,24 @@ pub fn view_dock<'a>(
 
     // Send button — only active when there's text
     let send_btn = if input_value.is_empty() {
-        button(text("→").size(18).color(p.text_muted))
+        button(text(">").size(16).color(p.text_muted))
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
             .style(button::text)
     } else {
-        button(text("→").size(18).color(p.coral_bright))
+        button(text(">").size(16).color(p.coral_bright))
             .on_press(DockMessage::Submit)
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
             .style(button::text)
     };
 
-    // Theme toggle (sun/moon icon)
-    let theme_icon = match theme_mode {
-        ThemeMode::Dark => "☀",  // show sun (to switch to light)
-        ThemeMode::Light => "🌙", // show moon (to switch to dark)
+    // Theme toggle
+    let theme_label = match theme_mode {
+        ThemeMode::Dark => "LIGHT",
+        ThemeMode::Light => "DARK",
     };
-    let theme_btn = button(text(theme_icon).size(18).color(p.text_secondary))
+    let theme_btn = button(text(theme_label).size(11).color(p.text_secondary))
         .on_press(DockMessage::ToggleTheme)
-        .padding(Padding::from([theme::GRID, theme::GRID * 1.0]))
+        .padding(Padding::from([theme::GRID * 0.5, theme::GRID]))
         .style(button::text);
 
     let dock_content = row![

@@ -170,11 +170,8 @@ impl App {
                 }
             }
             Message::Conversation(conv_msg) => match conv_msg {
-                ConversationMessage::InputChanged(val) => {
-                    self.dock_input = val;
-                }
-                ConversationMessage::Submit => {
-                    self.send_message();
+                ConversationMessage::Back => {
+                    self.view = AppView::Ambient;
                 }
             },
             Message::Dock(dock_msg) => match dock_msg {
@@ -236,7 +233,7 @@ impl App {
                 row![left, right_panel].height(Length::Fill).into()
             }
             AppView::Conversation => {
-                conversation::view_conversation(&self.chat_messages, &self.dock_input, &palette)
+                conversation::view_conversation(&self.chat_messages, &palette)
                     .map(Message::Conversation)
             }
         };
