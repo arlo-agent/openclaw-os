@@ -1,4 +1,4 @@
-use crate::theme;
+use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Element, Length, Padding};
@@ -7,7 +7,7 @@ use iced::{Alignment, Element, Length, Padding};
 pub struct ChatMessage {
     pub from_user: bool,
     pub content: String,
-    pub revealed_chars: usize, // for typewriter effect
+    pub revealed_chars: usize,
 }
 
 impl ChatMessage {
@@ -21,7 +21,6 @@ impl ChatMessage {
         }
     }
 
-    /// Advance the typewriter reveal by one character
     pub fn tick_typewriter(&mut self) {
         if self.revealed_chars < self.content.len() {
             self.revealed_chars += 1;
@@ -52,14 +51,16 @@ pub enum ConversationMessage {
 pub fn view_conversation<'a>(
     messages: &'a [ChatMessage],
     input_value: &str,
+    palette: &OpenClawPalette,
 ) -> Element<'a, ConversationMessage> {
+    let p = *palette;
     let mut msg_views: Vec<Element<'a, ConversationMessage>> = Vec::new();
 
     for msg in messages {
         let bubble_style = if msg.from_user {
-            glass_card::glass_accent
+            glass_card::glass_accent_with_palette(&p)
         } else {
-            glass_card::glass_container
+            glass_card::glass_container_with_palette(&p)
         };
 
         let alignment = if msg.from_user {
@@ -74,16 +75,16 @@ pub fn view_conversation<'a>(
             column![
                 text(label)
                     .size(theme::FONT_CAPTION)
-                    .color(theme::TEXT_SECONDARY),
+                    .color(p.text_secondary),
                 text(msg.visible_text())
                     .size(theme::FONT_BODY)
-                    .color(theme::TEXT_PRIMARY),
+                    .color(p.text_primary),
             ]
             .spacing(4),
         )
         .padding(Padding::from(theme::GRID * 1.5))
         .max_width(500)
-        .style(bubble_style);
+        .style(move |_theme: &_| bubble_style);
 
         let row = row![Space::new(0, 0), bubble]
             .width(Length::Fill)

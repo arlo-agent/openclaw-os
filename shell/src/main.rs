@@ -11,23 +11,13 @@ use dock::DockMessage;
 use iced::widget::{column, container, row, stack, Space};
 use iced::{Element, Length, Padding, Size, Subscription, Theme};
 use std::time::{Duration, Instant};
+use theme::{OpenClawPalette, ThemeMode};
 use widgets::particle_field::ParticleField;
 
 fn main() -> iced::Result {
     iced::application("OpenClaw OS", App::update, App::view)
         .subscription(App::subscription)
-        .theme(|_| {
-            Theme::custom(
-                "OpenClaw".into(),
-                iced::theme::Palette {
-                    background: theme::BACKGROUND,
-                    text: theme::TEXT_PRIMARY,
-                    primary: theme::PRIMARY,
-                    success: theme::SUCCESS,
-                    danger: theme::ERROR,
-                },
-            )
-        })
+        .theme(App::theme)
         .window_size(Size::new(1280.0, 720.0))
         .antialiasing(true)
         .run()
@@ -49,6 +39,7 @@ struct App {
     connected: bool,
     agent_active: bool,
     window_size: (f32, f32),
+    theme_mode: ThemeMode,
 }
 
 #[derive(Debug, Clone)]
@@ -61,7 +52,6 @@ enum Message {
 
 impl Default for App {
     fn default() -> Self {
-        // Demo cards
         let demo_cards = vec![
             Card::new(
                 CardType::Message,
@@ -90,11 +80,21 @@ impl Default for App {
             connected: true,
             agent_active: true,
             window_size: (1280.0, 720.0),
+            theme_mode: ThemeMode::default(),
         }
     }
 }
 
 impl App {
+    fn palette(&self) -> OpenClawPalette {
+        OpenClawPalette::from_mode(self.theme_mode)
+    }
+
+    fn theme(&self) -> Theme {
+        let p = self.palette();
+        Theme::custom("OpenClaw".into(), p.to_iced_palette())
+    }
+
     fn update(&mut self, message: Message) {
         match message {
             Message::Tick(_now) => {
@@ -102,7 +102,6 @@ impl App {
                 for card in &mut self.cards {
                     card.tick();
                 }
-                // Typewriter effect for chat messages
                 for msg in &mut self.chat_messages {
                     if !msg.is_fully_revealed() {
                         msg.tick_typewriter();
@@ -123,7 +122,6 @@ impl App {
                         let user_msg = ChatMessage::new(true, self.chat_input.clone());
                         self.chat_messages.push(user_msg);
 
-                        // Demo agent response
                         let response = format!(
                             "I heard you say: \"{}\". I'm the OpenClaw agent — voice pipeline coming soon!",
                             self.chat_input
@@ -137,7 +135,6 @@ impl App {
             },
             Message::Dock(dock_msg) => match dock_msg {
                 DockMessage::ToggleVoice => {
-                    // Placeholder: toggle back to ambient
                     self.view = match self.view {
                         AppView::Ambient => AppView::Ambient,
                         AppView::Conversation => AppView::Ambient,
@@ -154,31 +151,38 @@ impl App {
     }
 
     fn view(&self) -> Element<'_, Message> {
+        let palette = self.palette();
+
         let bg = container(Space::new(Length::Fill, Length::Fill))
             .width(Length::Fill)
             .height(Length::Fill)
-            .style(|_theme: &_| container::Style {
-                background: Some(iced::Background::Color(theme::BACKGROUND)),
+            .style(move |_theme: &_| container::Style {
+                background: Some(iced::Background::Color(palette.bg_deep)),
                 ..Default::default()
             });
 
-        let particles = self.particles.view().map(|_: ()| Message::Tick(Instant::now()));
+        let particles = self
+            .particles
+            .view()
+            .map(|_: ()| Message::Tick(Instant::now()));
 
         let main_content: Element<Message> = match &self.view {
             AppView::Ambient => {
-                let clock = ambient::view_clock().map(|_: ()| Message::Tick(Instant::now()));
-                let status = ambient::view_status_dots(self.connected, self.agent_active)
-                    .map(|_: ()| Message::Tick(Instant::now()));
+                let clock =
+                    ambient::view_clock(&palette).map(|_: ()| Message::Tick(Instant::now()));
+                let status =
+                    ambient::view_status_dots(self.connected, self.agent_active, &palette)
+                        .map(|_: ()| Message::Tick(Instant::now()));
 
-                let cards_view = cards::view_cards(&self.cards).map(Message::Card);
+                let cards_view = cards::view_cards(&self.cards, &palette).map(Message::Card);
 
                 let right_panel = container(cards_view)
                     .padding(Padding::from(theme::GRID * 3.0))
                     .width(400)
                     .height(Length::Fill);
 
-                let status_bar = container(status)
-                    .padding(Padding::from(theme::GRID * 2.0));
+                let status_bar =
+                    container(status).padding(Padding::from(theme::GRID * 2.0));
 
                 let left = column![status_bar, clock]
                     .width(Length::Fill)
@@ -187,12 +191,12 @@ impl App {
                 row![left, right_panel].height(Length::Fill).into()
             }
             AppView::Conversation => {
-                conversation::view_conversation(&self.chat_messages, &self.chat_input)
+                conversation::view_conversation(&self.chat_messages, &self.chat_input, &palette)
                     .map(Message::Conversation)
             }
         };
 
-        let dock_view = dock::view_dock(self.show_dock).map(Message::Dock);
+        let dock_view = dock::view_dock(self.show_dock, &palette).map(Message::Dock);
 
         let layout = column![
             container(main_content)
@@ -202,18 +206,13 @@ impl App {
         ]
         .height(Length::Fill);
 
-        stack![
-            bg,
-            particles,
-            layout,
-        ]
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .into()
+        stack![bg, particles, layout]
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        // 60fps tick for animations
         iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick(Instant::now()))
     }
 }

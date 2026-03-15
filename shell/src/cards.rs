@@ -1,4 +1,4 @@
-use crate::theme;
+use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
@@ -12,12 +12,12 @@ pub enum CardType {
 }
 
 impl CardType {
-    pub fn accent(&self) -> Color {
+    pub fn accent(&self, palette: &OpenClawPalette) -> Color {
         match self {
-            CardType::Message => theme::PRIMARY,
-            CardType::Alert => theme::ALERT,
-            CardType::Status => theme::SUCCESS,
-            CardType::Info => theme::TEXT_SECONDARY,
+            CardType::Message => palette.coral_bright,
+            CardType::Alert => palette.coral_mid,
+            CardType::Status => palette.cyan_bright,
+            CardType::Info => palette.text_secondary,
         }
     }
 
@@ -36,7 +36,7 @@ pub struct Card {
     pub card_type: CardType,
     pub title: String,
     pub body: String,
-    pub offset_x: f32, // for slide-in animation
+    pub offset_x: f32,
 }
 
 impl Card {
@@ -45,20 +45,18 @@ impl Card {
             card_type,
             title: title.into(),
             body: body.into(),
-            offset_x: 300.0, // start offscreen right
+            offset_x: 300.0,
         }
     }
 
-    /// Animate the card sliding in (spring-like: approach 0 with decay)
     pub fn tick(&mut self) {
-        // Simple spring: move 12% closer to target each frame
         self.offset_x *= 0.88;
         if self.offset_x.abs() < 0.5 {
             self.offset_x = 0.0;
         }
     }
 
-    pub fn is_settled(&self) -> bool {
+    pub fn _is_settled(&self) -> bool {
         self.offset_x == 0.0
     }
 }
@@ -68,29 +66,32 @@ pub enum CardMessage {
     Dismiss(usize),
 }
 
-pub fn view_cards<'a>(cards: &'a [Card]) -> Element<'a, CardMessage> {
+pub fn view_cards<'a>(cards: &'a [Card], palette: &OpenClawPalette) -> Element<'a, CardMessage> {
+    let p = *palette;
     let card_views: Vec<Element<'a, CardMessage>> = cards
         .iter()
         .enumerate()
         .map(|(i, card)| {
-            let accent_dot = container(Space::new(8, 8))
-                .style(move |_theme: &_| container::Style {
-                    background: Some(iced::Background::Color(card.card_type.accent())),
+            let accent_color = card.card_type.accent(&p);
+            let accent_dot = container(Space::new(8, 8)).style(move |_theme: &_| {
+                container::Style {
+                    background: Some(iced::Background::Color(accent_color)),
                     border: iced::Border {
                         radius: 4.0.into(),
                         ..Default::default()
                     },
                     ..Default::default()
-                });
+                }
+            });
 
             let header = row![
                 accent_dot,
                 Space::with_width(8),
                 text(card.card_type.label())
                     .size(theme::FONT_CAPTION)
-                    .color(theme::TEXT_SECONDARY),
+                    .color(p.text_secondary),
                 Space::with_width(Length::Fill),
-                button(text("✕").size(14).color(theme::TEXT_SECONDARY))
+                button(text("✕").size(14).color(p.text_secondary))
                     .on_press(CardMessage::Dismiss(i))
                     .padding(4)
                     .style(button::text),
@@ -101,22 +102,21 @@ pub fn view_cards<'a>(cards: &'a [Card]) -> Element<'a, CardMessage> {
                 header,
                 text(&card.title)
                     .size(theme::FONT_HEADING)
-                    .color(theme::TEXT_PRIMARY),
+                    .color(p.text_primary),
                 text(&card.body)
                     .size(theme::FONT_BODY)
-                    .color(theme::TEXT_SECONDARY),
+                    .color(p.text_secondary),
             ]
             .spacing(theme::GRID as u16);
 
+            let card_style = glass_card::glass_container_with_palette(&p);
             container(content)
                 .padding(Padding::from(theme::GRID * 2.0))
                 .width(360)
-                .style(glass_card::glass_container)
+                .style(move |_theme: &_| card_style)
                 .into()
         })
         .collect();
 
-    column(card_views)
-        .spacing(theme::GRID as u16)
-        .into()
+    column(card_views).spacing(theme::GRID as u16).into()
 }
