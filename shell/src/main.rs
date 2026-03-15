@@ -2,12 +2,14 @@ mod ambient;
 mod cards;
 mod conversation;
 mod dock;
+mod gateway;
 mod theme;
 mod widgets;
 
 use cards::{Card, CardMessage, CardType};
 use conversation::{ChatMessage, ConversationMessage};
 use dock::DockMessage;
+use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
 use iced::{Element, Length, Padding, Size, Subscription, Theme};
 use std::time::{Duration, Instant};
@@ -40,6 +42,7 @@ struct App {
     listening: bool,
     window_size: (f32, f32),
     theme_mode: ThemeMode,
+    gateway: Gateway,
 }
 
 #[derive(Debug, Clone)]
@@ -52,23 +55,31 @@ enum Message {
 
 impl Default for App {
     fn default() -> Self {
-        let demo_cards = vec![
-            Card::new(
-                CardType::Message,
-                "New message from Francis",
-                "Hey, how's the shell UI coming along?",
-            ),
-            Card::new(
-                CardType::Status,
-                "System Update",
-                "NixOS generation 42 applied successfully.",
-            ),
-            Card::new(
-                CardType::Alert,
-                "Calendar",
-                "Team standup in 15 minutes",
-            ),
-        ];
+        let config = GatewayConfig::default();
+        let gw = Gateway::new(config);
+
+        // Only show demo cards if NOT in mock mode (mock will generate its own)
+        let demo_cards = if gw.is_mock() {
+            Vec::new()
+        } else {
+            vec![
+                Card::new(
+                    CardType::Message,
+                    "New message from Francis",
+                    "Hey, how's the shell UI coming along?",
+                ),
+                Card::new(
+                    CardType::Status,
+                    "System Update",
+                    "NixOS generation 42 applied successfully.",
+                ),
+                Card::new(
+                    CardType::Alert,
+                    "Calendar",
+                    "Team standup in 15 minutes",
+                ),
+            ]
+        };
 
         Self {
             view: AppView::Ambient,
@@ -81,6 +92,7 @@ impl Default for App {
             listening: false,
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
+            gateway: gw,
         }
     }
 }
@@ -100,17 +112,39 @@ impl App {
             let user_msg = ChatMessage::new(true, self.dock_input.clone());
             self.chat_messages.push(user_msg);
 
-            let response = format!(
-                "I heard you say: \"{}\". I'm the OpenClaw agent — voice pipeline coming soon!",
-                self.dock_input
-            );
-            let agent_msg = ChatMessage::new(false, response);
-            self.chat_messages.push(agent_msg);
+            // Send to gateway
+            self.gateway.send_message(&self.dock_input);
 
             self.dock_input.clear();
-
-            // Switch to conversation view when sending a message
             self.view = AppView::Conversation;
+        }
+    }
+
+    fn process_gateway_events(&mut self) {
+        let events = self.gateway.drain_events();
+        for event in events {
+            match event {
+                GatewayEvent::AgentResponse(text) => {
+                    let agent_msg = ChatMessage::new(false, text);
+                    self.chat_messages.push(agent_msg);
+                }
+                GatewayEvent::Notification {
+                    channel,
+                    title,
+                    body,
+                } => {
+                    let card_type = match channel.to_lowercase().as_str() {
+                        "telegram" | "whatsapp" | "discord" => CardType::Message,
+                        "calendar" => CardType::Alert,
+                        _ => CardType::Status,
+                    };
+                    self.cards
+                        .push(Card::new(card_type, title, body));
+                }
+                GatewayEvent::ConnectionStatus(connected) => {
+                    self.connected = connected;
+                }
+            }
         }
     }
 
@@ -126,6 +160,9 @@ impl App {
                         msg.tick_typewriter();
                     }
                 }
+                // Gateway tick + process events
+                self.gateway.tick();
+                self.process_gateway_events();
             }
             Message::Card(CardMessage::Dismiss(i)) => {
                 if i < self.cards.len() {
