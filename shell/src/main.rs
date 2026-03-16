@@ -291,8 +291,18 @@ impl App {
                 }
 
                 if finished {
-                    // Write config files, then transition to ambient
-                    welcome::write_wizard_config(&self.welcome);
+                    // Write config files, start gateway, get the token
+                    if let Some(token) = welcome::write_wizard_config(&self.welcome) {
+                        // Reconnect gateway with the new token after a short delay
+                        // (gateway needs time to start/restart)
+                        let new_config = GatewayConfig {
+                            mock: false,
+                            host: "127.0.0.1".to_string(),
+                            port: 18789,
+                            token: Some(token),
+                        };
+                        self.gateway = Gateway::new(new_config);
+                    }
                     self.view = AppView::Ambient;
                 }
             }

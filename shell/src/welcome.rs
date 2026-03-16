@@ -10,6 +10,7 @@ use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
+use rand::Rng;
 
 // ── Data types ──────────────────────────────────────────────────────────
 
@@ -223,7 +224,15 @@ fn prev_step(current: WizardStep, auth: AuthProvider) -> WizardStep {
 
 // ── Config writing ──────────────────────────────────────────────────────
 
-pub fn write_wizard_config(state: &WelcomeState) {
+/// Generate a random 32-char hex token for gateway auth
+fn generate_random_token() -> String {
+    let mut rng = rand::thread_rng();
+    let bytes: Vec<u8> = (0..16).map(|_| rng.gen()).collect();
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Write config and return the gateway token (so the shell can connect)
+pub fn write_wizard_config(state: &WelcomeState) -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let openclaw_dir = format!("{}/.openclaw", home);
     let workspace_dir = format!("{}/workspace", openclaw_dir);
@@ -305,6 +314,9 @@ pub fn write_wizard_config(state: &WelcomeState) {
         }
     }
 
+    // Generate a random gateway auth token
+    let gateway_token = generate_random_token();
+
     let mut config = serde_json::json!({
         "auth": {
             "profiles": {
@@ -326,7 +338,11 @@ pub fn write_wizard_config(state: &WelcomeState) {
         "gateway": {
             "port": 18789,
             "mode": "local",
-            "bind": "loopback"
+            "bind": "loopback",
+            "auth": {
+                "mode": "token",
+                "token": gateway_token
+            }
         }
     });
 
@@ -400,6 +416,66 @@ pub fn write_wizard_config(state: &WelcomeState) {
         "[wizard] Config written to {}/openclaw.json, {}/IDENTITY.md, {}/voice/config.json",
         openclaw_dir, workspace_dir, workspace_dir
     );
+
+    // 4. Start or restart the gateway so it picks up the new config
+    start_or_restart_gateway();
+
+    Some(gateway_token)
+}
+
+/// Start or restart the OpenClaw gateway after writing config.
+///
+/// Tries multiple strategies:
+/// 1. `openclaw gateway restart` (if already running)
+/// 2. `openclaw gateway start` (if not running)
+/// 3. `systemctl restart openclaw-gateway` (ClawOS with systemd)
+///
+/// Runs in a background thread so the UI doesn't block.
+fn start_or_restart_gateway() {
+    std::thread::spawn(|| {
+        eprintln!("[wizard] Starting/restarting gateway...");
+
+        // Try openclaw CLI first (works on macOS + Linux with openclaw installed)
+        let restart = std::process::Command::new("openclaw")
+            .args(["gateway", "restart"])
+            .output();
+
+        match restart {
+            Ok(out) if out.status.success() => {
+                eprintln!("[wizard] Gateway restarted via 'openclaw gateway restart'");
+                return;
+            }
+            _ => {}
+        }
+
+        // Try starting if restart failed (maybe it wasn't running)
+        let start = std::process::Command::new("openclaw")
+            .args(["gateway", "start"])
+            .output();
+
+        match start {
+            Ok(out) if out.status.success() => {
+                eprintln!("[wizard] Gateway started via 'openclaw gateway start'");
+                return;
+            }
+            _ => {}
+        }
+
+        // Fallback: systemd (ClawOS)
+        let systemd = std::process::Command::new("systemctl")
+            .args(["restart", "openclaw-gateway"])
+            .output();
+
+        match systemd {
+            Ok(out) if out.status.success() => {
+                eprintln!("[wizard] Gateway restarted via systemctl");
+                return;
+            }
+            _ => {}
+        }
+
+        eprintln!("[wizard] Could not start gateway — run 'openclaw gateway start' manually");
+    });
 }
 
 // ── View ────────────────────────────────────────────────────────────────
