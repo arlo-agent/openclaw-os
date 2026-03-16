@@ -57,11 +57,14 @@ enum Message {
 
 impl Default for App {
     fn default() -> Self {
-        let config = GatewayConfig::default();
+        let args: Vec<String> = std::env::args().collect();
+        let config = GatewayConfig::from_args(&args);
+        let is_mock = config.mock;
         let gw = Gateway::new(config);
+        let connected = gw.connected;
 
         // Only show demo cards if NOT in mock mode (mock will generate its own)
-        let demo_cards = if gw.is_mock() {
+        let demo_cards = if is_mock {
             Vec::new()
         } else {
             vec![
@@ -89,7 +92,7 @@ impl Default for App {
             cards: demo_cards,
             chat_messages: Vec::new(),
             dock_input: String::new(),
-            connected: true,
+            connected,
             agent_active: true,
             listening: false,
             window_size: (1280.0, 720.0),
