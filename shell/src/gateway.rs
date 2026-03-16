@@ -522,7 +522,7 @@ fn handle_ws_message(v: &Value, tx: &mpsc::Sender<GatewayEvent>) {
                     let done = payload.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
                     let run_id = payload.get("runId").and_then(|r| r.as_str()).unwrap_or("unknown").to_string();
 
-                    eprintln!("[gateway] chat event: kind={} done={} runId={}", kind, done, run_id);
+                    eprintln!("[gateway] chat event: kind={} done={} runId={} payload={}", kind, done, run_id, payload);
 
                     match kind {
                         "text" => {
