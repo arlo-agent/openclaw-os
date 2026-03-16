@@ -1146,9 +1146,14 @@ fn view_step_ready(agent_name: &str, p: &OpenClawPalette) -> Element<'static, We
     column![
         Space::with_height(theme::GRID * 3.0),
         container(
-            text("✨ All set!")
-                .size(theme::FONT_DISPLAY * 0.6)
-                .color(p.coral_bright),
+            row![
+                bicon(Bootstrap::Stars, theme::FONT_DISPLAY * 0.5, p.coral_bright),
+                Space::with_width(12),
+                text("All set!")
+                    .size(theme::FONT_DISPLAY * 0.6)
+                    .color(p.coral_bright),
+            ]
+            .align_y(Alignment::Center),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 2.0),
