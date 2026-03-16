@@ -320,10 +320,13 @@ pub fn view_messaging_setup<'a>(
         let right_side: Element<'static, MessagingMessage> = match &cfg.status {
             ChannelStatus::Configured(summary) => {
                 row![
-                    text(format!("✓ {}", summary))
+                    bicon(Bootstrap::CheckCircleFill, 12.0, p.cyan_bright),
+                    Space::with_width(4),
+                    text(summary.clone())
                         .size(theme::FONT_CAPTION)
                         .color(p.cyan_bright),
                 ]
+                .align_y(Alignment::Center)
                 .into()
             }
             _ if is_expanded => Space::with_width(0).into(),

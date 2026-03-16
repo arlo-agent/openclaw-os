@@ -837,26 +837,63 @@ fn view_step_auth(
 
     for provider in &providers {
         let is_sel = current == *provider;
-        let desc = if *provider == AuthProvider::Ollama {
-            let status_str = match ollama_status {
-                OllamaStatus::Running(v) => format!("  ✓ Detected (v{})", v),
-                OllamaStatus::NotRunning => "  ⚠ Installed but not running".to_string(),
-                OllamaStatus::NotInstalled => "  ✗ Not detected".to_string(),
-                OllamaStatus::Checking => "  ⏳ Checking...".to_string(),
-                OllamaStatus::Unknown => String::new(),
-            };
-            format!("{}{}", provider.description(), status_str)
-        } else {
-            provider.description().to_string()
-        };
 
         items.push(radio_option(
             provider.label(),
-            &desc,
+            provider.description(),
             is_sel,
             WelcomeMessage::SetAuthChoice(*provider),
             p,
         ));
+
+        // Add Ollama status indicator below the radio option
+        if *provider == AuthProvider::Ollama {
+            let (status_icon, status_color, status_text): (Bootstrap, Color, String) = match ollama_status {
+                OllamaStatus::Running(v) => (
+                    Bootstrap::CheckCircleFill,
+                    p.cyan_bright,
+                    format!("Detected (v{})", v),
+                ),
+                OllamaStatus::NotRunning => (
+                    Bootstrap::ExclamationTriangleFill,
+                    p.coral_mid,
+                    "Installed but not running".to_string(),
+                ),
+                OllamaStatus::NotInstalled => (
+                    Bootstrap::XCircleFill,
+                    p.coral_bright,
+                    "Not detected".to_string(),
+                ),
+                OllamaStatus::Checking => (
+                    Bootstrap::Hourglass,
+                    p.text_muted,
+                    "Checking...".to_string(),
+                ),
+                OllamaStatus::Unknown => (
+                    Bootstrap::Hourglass,
+                    p.text_muted,
+                    String::new(),
+                ),
+            };
+
+            if !status_text.is_empty() {
+                items.push(
+                    container(
+                        row![
+                            Space::with_width(30), // indent under radio label
+                            bicon(status_icon, 12.0, status_color),
+                            Space::with_width(6),
+                            text(status_text)
+                                .size(theme::FONT_CAPTION)
+                                .color(status_color),
+                        ]
+                        .align_y(Alignment::Center),
+                    )
+                    .into(),
+                );
+            }
+        }
+
         items.push(Space::with_height(theme::GRID).into());
     }
 
