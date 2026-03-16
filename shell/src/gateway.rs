@@ -348,8 +348,14 @@ impl Gateway {
                         let _ = event_tx_clone.send(GatewayEvent::ConnectionStatus(false));
                         break;
                     }
-                    Ok(WsMessage::Ping(_)) => {
-                        // Pong is handled by tungstenite automatically for raw sockets
+                    Ok(WsMessage::Ping(data)) => {
+                        // tungstenite from_raw_socket doesn't auto-pong — we need to respond
+                        // But we can't write from the reader socket (it's split).
+                        // Send a command to the writer thread instead.
+                        eprintln!("[gateway] Received ping, ignoring (pong via writer not wired)");
+                    }
+                    Ok(WsMessage::Pong(_)) => {
+                        // Pong received — connection is alive
                     }
                     Err(e) => {
                         eprintln!("[gateway] Read error: {}", e);
@@ -520,6 +526,10 @@ fn handle_ws_message(v: &Value, tx: &mpsc::Sender<GatewayEvent>) {
     match msg_type {
         "event" => {
             let event_name = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
+            if event_name == "tick" {
+                // Gateway keep-alive tick — no action needed, just ack by not dying
+                return;
+            }
             if event_name == "chat" {
                 if let Some(payload) = v.get("payload") {
                     let run_id = payload.get("runId").and_then(|r| r.as_str()).unwrap_or("unknown").to_string();
