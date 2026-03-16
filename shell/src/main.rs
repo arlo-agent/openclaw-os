@@ -1,6 +1,7 @@
 mod ambient;
 mod cards;
 mod conversation;
+mod device_identity;
 mod dock;
 mod gateway;
 mod theme;

@@ -3,7 +3,9 @@
 //! Mock mode: simulates agent responses with canned replies.
 //! Real mode: connects to OpenClaw gateway via WebSocket.
 
+use crate::device_identity::DeviceIdentity;
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -80,6 +82,15 @@ const SESSION_KEY: &str = "agent:main:webchat";
 /// Shared writer handle for the WebSocket
 type WsWriter = Arc<Mutex<Option<tungstenite::WebSocket<tungstenite::stream::MaybeTlsStream<std::net::TcpStream>>>>>;
 
+/// Detect the current platform string.
+fn detect_platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux"
+    }
+}
+
 /// Gateway client — handles mock and real communication
 pub struct Gateway {
     pub config: GatewayConfig,
@@ -100,6 +111,8 @@ pub struct Gateway {
     streaming_buffer: std::collections::HashMap<String, String>,
     /// Track last reconnect attempt
     last_reconnect_attempt: Option<Instant>,
+    /// Device identity for gateway authentication
+    device_identity: Option<DeviceIdentity>,
 }
 
 impl Gateway {
@@ -109,8 +122,25 @@ impl Gateway {
         let mut event_rx = None;
         let mut connected = false;
 
+        // Load or create device identity
+        let device_identity = if !config.mock {
+            let identity_path = dirs_or_home().join("device-identity.json");
+            match DeviceIdentity::load_or_create(&identity_path) {
+                Ok(id) => {
+                    eprintln!("[gateway] Device identity loaded: {}", id.device_id);
+                    Some(id)
+                }
+                Err(e) => {
+                    eprintln!("[gateway] Failed to load device identity: {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         if !config.mock {
-            match Self::start_connection(&config, ws_writer.clone(), next_id.clone()) {
+            match Self::start_connection(&config, ws_writer.clone(), next_id.clone(), device_identity.as_ref()) {
                 Ok((rx, is_connected)) => {
                     event_rx = Some(rx);
                     connected = is_connected;
@@ -132,6 +162,7 @@ impl Gateway {
             next_id,
             streaming_buffer: std::collections::HashMap::new(),
             last_reconnect_attempt: None,
+            device_identity,
         }
     }
 
@@ -140,6 +171,7 @@ impl Gateway {
         config: &GatewayConfig,
         ws_writer: WsWriter,
         _next_id: Arc<AtomicU64>,
+        device_identity: Option<&DeviceIdentity>,
     ) -> Result<(mpsc::Receiver<GatewayEvent>, bool), String> {
         let url_str = format!("ws://{}:{}/", config.host, config.port);
         eprintln!("[gateway] Connecting to {}...", url_str);
@@ -154,43 +186,84 @@ impl Gateway {
             .read()
             .map_err(|e| format!("Failed to read challenge: {}", e))?;
 
+        let mut challenge_nonce = String::new();
         if let WsMessage::Text(text) = &challenge_msg {
             let v: Value = serde_json::from_str(text)
                 .map_err(|e| format!("Bad challenge JSON: {}", e))?;
             if v.get("event").and_then(|e| e.as_str()) == Some("connect.challenge") {
                 eprintln!("[gateway] Received connect challenge");
+                if let Some(payload) = v.get("payload") {
+                    if let Some(nonce) = payload.get("nonce").and_then(|n| n.as_str()) {
+                        challenge_nonce = nonce.to_string();
+                    }
+                }
             } else {
                 eprintln!("[gateway] Unexpected first message: {}", text);
             }
         }
 
         // Step 2: Send connect request
-        let auth = if let Some(ref token) = config.token {
-            json!({"token": token})
+        let token_str = config.token.as_deref().unwrap_or("");
+        let auth = if !token_str.is_empty() {
+            json!({"token": token_str})
         } else {
             json!({})
         };
+
+        let platform = detect_platform();
+        let scopes = ["operator.read", "operator.write", "operator.admin"];
+
+        // Build device object if we have identity and a nonce
+        let device_obj = if let Some(identity) = device_identity {
+            if !challenge_nonce.is_empty() {
+                let (signature, public_key, signed_at) = identity.sign_challenge(
+                    &challenge_nonce,
+                    token_str,
+                    "cli",
+                    "cli",
+                    "operator",
+                    &scopes,
+                    platform,
+                );
+                Some(json!({
+                    "id": identity.device_id,
+                    "publicKey": public_key,
+                    "signature": signature,
+                    "signedAt": signed_at,
+                    "nonce": challenge_nonce
+                }))
+            } else {
+                eprintln!("[gateway] Warning: no nonce in challenge, connecting without device identity");
+                None
+            }
+        } else {
+            None
+        };
+
+        let mut params = json!({
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "client": {
+                "id": "cli",
+                "version": "0.1.0",
+                "platform": platform,
+                "mode": "cli"
+            },
+            "role": "operator",
+            "scopes": scopes,
+            "caps": [],
+            "auth": auth
+        });
+
+        if let Some(device) = device_obj {
+            params.as_object_mut().unwrap().insert("device".to_string(), device);
+        }
 
         let connect_req = json!({
             "type": "req",
             "id": "1",
             "method": "connect",
-            "params": {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": "cli",
-                    "version": "0.1.0",
-                    "platform": "linux",
-                    "mode": "cli"
-                },
-                "role": "operator",
-                "scopes": ["operator.read", "operator.write", "operator.admin"],
-                "caps": [],
-                "commands": [],
-                "permissions": {},
-                "auth": auth
-            }
+            "params": params
         });
 
         socket
@@ -209,7 +282,6 @@ impl Gateway {
             let v: Value = serde_json::from_str(text).unwrap_or_default();
             if v.get("ok").and_then(|o| o.as_bool()) == Some(true) {
                 eprintln!("[gateway] Connected! Protocol handshake complete.");
-                eprintln!("[gateway] Hello response: {}", text);
                 is_connected = true;
             } else {
                 eprintln!("[gateway] Connect rejected: {}", text);
@@ -435,7 +507,7 @@ impl Gateway {
                 self.last_reconnect_attempt = Some(Instant::now());
                 eprintln!("[gateway] Attempting reconnect...");
 
-                match Self::start_connection(&self.config, self.ws_writer.clone(), self.next_id.clone()) {
+                match Self::start_connection(&self.config, self.ws_writer.clone(), self.next_id.clone(), self.device_identity.as_ref()) {
                     Ok((rx, is_connected)) => {
                         self.event_rx = Some(rx);
                         self.connected = is_connected;
@@ -503,6 +575,12 @@ impl Gateway {
             self.last_mock_notification = Some(now);
         }
     }
+}
+
+/// Get the `~/.openclaw-os` directory path.
+fn dirs_or_home() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".openclaw-os")
 }
 
 const MOCK_NOTIFICATIONS: &[(&str, &str, &str)] = &[
