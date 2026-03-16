@@ -247,7 +247,7 @@ pub fn write_wizard_config(state: &WelcomeState) {
             let model = state.selected_model.as_deref().unwrap_or("llama3.3");
             ("ollama", model.to_string(), serde_json::json!({
                 "provider": "ollama",
-                "mode": "none"
+                "mode": "api_key"
             }))
         }
         AuthProvider::Anthropic => {
@@ -278,7 +278,7 @@ pub fn write_wizard_config(state: &WelcomeState) {
         AuthProvider::Ollama => {
             providers[provider_key] = serde_json::json!({
                 "baseUrl": "http://127.0.0.1:11434",
-                "auth": "none",
+                "auth": "api-key",
                 "api": "openai-completions",
                 "models": [{
                     "id": model_id,
