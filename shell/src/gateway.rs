@@ -566,12 +566,25 @@ fn handle_ws_message(v: &Value, tx: &mpsc::Sender<GatewayEvent>) {
             }
         }
         "res" => {
-            if v.get("ok").and_then(|o| o.as_bool()) == Some(false) {
+            if v.get("ok").and_then(|o| o.as_bool()) == Some(true) {
+                // Check for in_flight status (session already has an active run)
+                let status = v.get("payload")
+                    .and_then(|p| p.get("status"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("");
+                if status == "in_flight" {
+                    eprintln!("[gateway] Request in_flight — session has an active run, waiting...");
+                } else if !status.is_empty() {
+                    eprintln!("[gateway] Request ok: status={}", status);
+                }
+            } else if v.get("ok").and_then(|o| o.as_bool()) == Some(false) {
                 let err_msg = v.get("error")
                     .and_then(|e| e.as_str().map(|s| s.to_string())
                         .or_else(|| e.get("message").and_then(|m| m.as_str()).map(|s| s.to_string())))
                     .unwrap_or_else(|| format!("{}", v));
                 eprintln!("[gateway] Request failed: {}", err_msg);
+                // Send error as agent response so user sees it
+                let _ = tx.send(GatewayEvent::AgentResponse(format!("Error: {}", err_msg)));
             }
         }
         _ => {}
