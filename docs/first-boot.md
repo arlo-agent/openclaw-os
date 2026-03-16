@@ -218,6 +218,16 @@ The key screen. Two columns — Male and Female — each with 3-4 pre-built voic
 - Tapping the button transitions to the ambient state
 - First boot wizard is done and never shown again
 
+## CLI Quick Setup
+
+For headless or terminal-based installs (no GUI wizard), the same flow is available via:
+
+```bash
+openclaw onboard --auth-choice ollama
+```
+
+See [onboarding.md](onboarding.md) for full details.
+
 ## Configuration Storage
 
 Everything from the wizard gets written to:
