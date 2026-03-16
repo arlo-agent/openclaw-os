@@ -428,7 +428,11 @@ impl Gateway {
                 "method": "chat.send",
                 "params": {
                     "message": message,
-                    "sessionKey": SESSION_KEY
+                    "sessionKey": SESSION_KEY,
+                    "idempotencyKey": format!("{}-{}", req_id, std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis())
                 }
             });
 
