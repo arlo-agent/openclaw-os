@@ -1,6 +1,7 @@
 use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::text::Shaping;
 use iced::{Alignment, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
@@ -80,7 +81,8 @@ pub fn view_conversation<'a>(
                     .color(p.text_secondary),
                 text(msg.visible_text())
                     .size(theme::FONT_BODY)
-                    .color(p.text_primary),
+                    .color(p.text_primary)
+                    .shaping(Shaping::Advanced),
             ]
             .spacing(4),
         )

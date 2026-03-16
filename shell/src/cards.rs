@@ -1,6 +1,7 @@
 use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, row, text, Space};
+use iced::widget::text::Shaping;
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
@@ -111,7 +112,8 @@ pub fn view_cards<'a>(cards: &'a [Card], palette: &OpenClawPalette) -> Element<'
                     .color(p.text_primary),
                 text(&card.body)
                     .size(theme::FONT_BODY)
-                    .color(p.text_secondary),
+                    .color(p.text_secondary)
+                    .shaping(Shaping::Advanced),
             ]
             .spacing(theme::GRID as u16);
 
