@@ -1,7 +1,9 @@
 //! Welcome / Onboarding wizard — first-boot experience.
 //!
 //! Multi-screen wizard: Welcome → Name → Voice → Auth → Ollama/ApiKey → Messaging → Ready
+//! Navigation buttons pinned at card footer; content scrolls above.
 
+use crate::messaging_setup::{MessagingMessage, MessagingState};
 use crate::ollama::{OllamaClient, OllamaStatus};
 use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
 use crate::widgets::glass_card;
@@ -68,6 +70,14 @@ pub struct WelcomeState {
     pub selected_model: Option<String>,
     pub available_models: Vec<String>,
     pub ollama_status: OllamaStatus,
+    // Model pulling
+    pub pulling_model: bool,
+    pub pull_progress: f32,
+    pub pull_status: String,
+    pub pull_complete: bool,
+    pub pull_error: Option<String>,
+    // Messaging
+    pub messaging: MessagingState,
 }
 
 impl Default for WelcomeState {
@@ -81,6 +91,12 @@ impl Default for WelcomeState {
             selected_model: None,
             available_models: Vec::new(),
             ollama_status: OllamaStatus::Unknown,
+            pulling_model: false,
+            pull_progress: 0.0,
+            pull_status: String::new(),
+            pull_complete: false,
+            pull_error: None,
+            messaging: MessagingState::default(),
         }
     }
 }
@@ -95,7 +111,12 @@ pub enum WelcomeMessage {
     SetAuthChoice(AuthProvider),
     SetApiKey(String),
     SelectModel(String),
+    PullModel(String),
+    PullProgress(f32, String),
+    PullComplete,
+    PullError(String),
     SkipMessaging,
+    Messaging(MessagingMessage),
     Finish,
 }
 
@@ -128,8 +149,32 @@ pub fn update_welcome(state: &mut WelcomeState, message: WelcomeMessage) -> bool
         WelcomeMessage::SelectModel(m) => {
             state.selected_model = Some(m);
         }
+        WelcomeMessage::PullModel(_model) => {
+            // Handled in main.rs — triggers ollama_client.pull_model()
+            state.pulling_model = true;
+            state.pull_progress = 0.0;
+            state.pull_status = "Starting download...".to_string();
+            state.pull_complete = false;
+            state.pull_error = None;
+        }
+        WelcomeMessage::PullProgress(pct, status) => {
+            state.pull_progress = pct;
+            state.pull_status = status;
+        }
+        WelcomeMessage::PullComplete => {
+            state.pulling_model = false;
+            state.pull_complete = true;
+            state.pull_status = "Download complete!".to_string();
+        }
+        WelcomeMessage::PullError(e) => {
+            state.pulling_model = false;
+            state.pull_error = Some(e);
+        }
         WelcomeMessage::SkipMessaging => {
             state.step = WizardStep::Ready;
+        }
+        WelcomeMessage::Messaging(msg) => {
+            crate::messaging_setup::update_messaging(&mut state.messaging, msg);
         }
         WelcomeMessage::Finish => {
             return true;
@@ -176,6 +221,93 @@ fn prev_step(current: WizardStep, auth: AuthProvider) -> WizardStep {
     }
 }
 
+// ── Config writing ──────────────────────────────────────────────────────
+
+pub fn write_wizard_config(state: &WelcomeState) {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let openclaw_dir = format!("{}/.openclaw", home);
+    let workspace_dir = format!("{}/workspace", openclaw_dir);
+
+    // Create directories
+    let _ = std::fs::create_dir_all(&openclaw_dir);
+    let _ = std::fs::create_dir_all(&workspace_dir);
+    let _ = std::fs::create_dir_all(format!("{}/voice", workspace_dir));
+
+    // 1. Write openclaw.json
+    let llm_config = match state.auth_choice {
+        AuthProvider::Ollama => {
+            let model = state.selected_model.as_deref().unwrap_or("llama3.3");
+            serde_json::json!({
+                "llm": {
+                    "provider": "ollama",
+                    "model": model,
+                    "baseUrl": "http://127.0.0.1:11434"
+                }
+            })
+        }
+        AuthProvider::Anthropic => serde_json::json!({
+            "llm": {
+                "provider": "anthropic",
+                "model": "claude-sonnet-4-20250514",
+                "apiKey": state.api_key
+            }
+        }),
+        AuthProvider::OpenAI => serde_json::json!({
+            "llm": {
+                "provider": "openai",
+                "model": "gpt-4o",
+                "apiKey": state.api_key
+            }
+        }),
+        AuthProvider::OpenRouter => serde_json::json!({
+            "llm": {
+                "provider": "openrouter",
+                "model": "openrouter/auto",
+                "apiKey": state.api_key
+            }
+        }),
+    };
+
+    // Merge messaging config if any channels configured
+    let messaging_configs = crate::messaging_setup::generate_messaging_config(&state.messaging);
+    let mut config = llm_config;
+    if !messaging_configs.is_empty() {
+        config.as_object_mut().unwrap().insert(
+            "channels".to_string(),
+            serde_json::Value::Array(messaging_configs),
+        );
+    }
+
+    let config_json = serde_json::to_string_pretty(&config).unwrap_or_default();
+    let _ = std::fs::write(format!("{}/openclaw.json", openclaw_dir), config_json);
+
+    // 2. Write IDENTITY.md
+    let agent_name = if state.agent_name.is_empty() {
+        "Atlas"
+    } else {
+        &state.agent_name
+    };
+    let identity = format!("# IDENTITY.md\n\n- **Name:** {}\n", agent_name);
+    let _ = std::fs::write(format!("{}/IDENTITY.md", workspace_dir), identity);
+
+    // 3. Write voice/config.json
+    let voice = state
+        .selected_voice
+        .as_deref()
+        .unwrap_or("warm-female");
+    let voice_config = serde_json::json!({
+        "voice": voice,
+        "wakeWord": format!("hey {}", agent_name.to_lowercase())
+    });
+    let voice_json = serde_json::to_string_pretty(&voice_config).unwrap_or_default();
+    let _ = std::fs::write(format!("{}/voice/config.json", workspace_dir), voice_json);
+
+    eprintln!(
+        "[wizard] Config written to {}/openclaw.json, {}/IDENTITY.md, {}/voice/config.json",
+        openclaw_dir, workspace_dir, workspace_dir
+    );
+}
+
 // ── View ────────────────────────────────────────────────────────────────
 
 pub fn view_welcome<'a>(
@@ -184,39 +316,112 @@ pub fn view_welcome<'a>(
 ) -> Element<'a, WelcomeMessage> {
     let p = *palette;
 
-    let inner: Element<'a, WelcomeMessage> = match state.step {
+    // Screen content (no nav buttons)
+    let content: Element<'a, WelcomeMessage> = match state.step {
         WizardStep::Welcome => view_step_welcome(&p),
         WizardStep::NameAgent => view_step_name(&state.agent_name, &p),
         WizardStep::ChooseVoice => {
             view_step_voice(&state.agent_name, state.selected_voice.as_deref(), &p)
         }
         WizardStep::AuthChoice => view_step_auth(state.auth_choice, &state.ollama_status, &p),
-        WizardStep::OllamaSetup => view_step_ollama(
-            &state.ollama_status,
-            &state.available_models,
-            state.selected_model.as_deref(),
-            &p,
-        ),
+        WizardStep::OllamaSetup => view_step_ollama(state, &p),
         WizardStep::ApiKey => view_step_apikey(state.auth_choice, &state.api_key, &p),
-        WizardStep::ConnectMessaging => view_step_messaging(&p),
+        WizardStep::ConnectMessaging => view_step_messaging(&state.messaging, &p),
         WizardStep::Ready => view_step_ready(&state.agent_name, &p),
     };
 
-    // Wrap in a centered glass card
+    // Footer nav (pinned at bottom)
+    let footer: Element<'static, WelcomeMessage> = match state.step {
+        WizardStep::Welcome | WizardStep::Ready => {
+            // These screens have their own buttons in content
+            Space::with_height(0).into()
+        }
+        WizardStep::ConnectMessaging => {
+            container(
+                row![
+                    secondary_btn("Skip for now", WelcomeMessage::SkipMessaging, &p),
+                    Space::with_width(Length::Fill),
+                    primary_btn("Next", Bootstrap::ArrowRight, WelcomeMessage::NextStep, &p),
+                ]
+                .align_y(Alignment::Center)
+                .width(Length::Fill),
+            )
+            .padding(Padding { top: theme::GRID * 1.5, right: theme::GRID * 4.0, bottom: theme::GRID * 2.0, left: theme::GRID * 4.0 })
+            .width(Length::Fill)
+            .into()
+        }
+        WizardStep::OllamaSetup if state.pulling_model => {
+            // Disable Next while pulling
+            container(
+                row![
+                    secondary_btn("← Back", WelcomeMessage::PrevStep, &p),
+                    Space::with_width(Length::Fill),
+                    caption("Downloading...", &p),
+                ]
+                .align_y(Alignment::Center)
+                .width(Length::Fill),
+            )
+            .padding(Padding { top: theme::GRID * 1.5, right: theme::GRID * 4.0, bottom: theme::GRID * 2.0, left: theme::GRID * 4.0 })
+            .width(Length::Fill)
+            .into()
+        }
+        _ => {
+            container(back_and_next(&p, true))
+                .padding(Padding { top: theme::GRID * 1.5, right: theme::GRID * 4.0, bottom: theme::GRID * 2.0, left: theme::GRID * 4.0 })
+                .width(Length::Fill)
+                .into()
+        }
+    };
+
+    // Separator line above footer
+    let separator = container(Space::new(Length::Fill, 1))
+        .width(Length::Fill)
+        .style(move |_: &_| container::Style {
+            background: Some(iced::Background::Color(p.border_subtle)),
+            ..Default::default()
+        });
+
+    let has_footer = !matches!(state.step, WizardStep::Welcome | WizardStep::Ready);
+
+    // Assemble: scrollable content + separator + fixed footer
+    let card_content = if has_footer {
+        column![
+            scrollable(
+                container(content)
+                    .padding(Padding::from(theme::GRID * 4.0))
+                    .width(Length::Fill),
+            )
+            .height(Length::Fill),
+            separator,
+            footer,
+        ]
+        .height(Length::Fill)
+    } else {
+        column![
+            scrollable(
+                container(content)
+                    .padding(Padding::from(theme::GRID * 4.0))
+                    .width(Length::Fill),
+            )
+            .height(Length::Fill),
+        ]
+        .height(Length::Fill)
+    };
+
+    // Glass card wrapper with fixed height
     let card_style = glass_card::glass_container_with_palette(&p);
 
-    let card = container(
-        container(inner)
-            .padding(Padding::from(theme::GRID * 4.0))
+    container(
+        container(card_content)
             .max_width(600)
+            .height(520)
             .style(move |_: &_| card_style),
     )
     .center_x(Length::Fill)
     .center_y(Length::Fill)
     .width(Length::Fill)
-    .height(Length::Fill);
-
-    card.into()
+    .height(Length::Fill)
+    .into()
 }
 
 // ── Helper widgets ──────────────────────────────────────────────────────
@@ -294,7 +499,10 @@ fn back_and_next(palette: &OpenClawPalette, show_back: bool) -> Element<'static,
         &p,
     ));
 
-    row(items).align_y(Alignment::Center).width(Length::Fill).into()
+    row(items)
+        .align_y(Alignment::Center)
+        .width(Length::Fill)
+        .into()
 }
 
 fn heading(s: &str, palette: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
@@ -391,7 +599,51 @@ fn radio_option(
     .into()
 }
 
-// ── Individual screens ──────────────────────────────────────────────────
+/// Progress bar widget — coral fill on muted background
+fn progress_bar(
+    progress: f32,
+    palette: &OpenClawPalette,
+) -> Element<'static, WelcomeMessage> {
+    let p = *palette;
+    let pct = progress.clamp(0.0, 100.0);
+
+    // Background track
+    let bg_style = move |_: &_| container::Style {
+        background: Some(iced::Background::Color(p.surface_interactive)),
+        border: iced::Border {
+            radius: 4.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    // Fill
+    let fill_style = move |_: &_| container::Style {
+        background: Some(iced::Background::Color(p.coral_bright)),
+        border: iced::Border {
+            radius: 4.0.into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let fill_width = Length::FillPortion((pct * 10.0) as u16);
+    let empty_width = Length::FillPortion(((100.0 - pct) * 10.0) as u16);
+
+    container(
+        row![
+            container(Space::new(fill_width, 8))
+                .style(fill_style),
+            Space::new(empty_width, 8),
+        ]
+        .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .style(bg_style)
+    .into()
+}
+
+// ── Individual screens (content only, no nav) ───────────────────────────
 
 fn view_step_welcome(p: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
     column![
@@ -399,21 +651,21 @@ fn view_step_welcome(p: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
         container(
             text("OpenClaw")
                 .size(theme::FONT_DISPLAY)
-                .color(p.coral_bright)
+                .color(p.coral_bright),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 2.0),
         container(
             text("Your AI assistant lives here.")
                 .size(theme::FONT_HEADING)
-                .color(p.text_secondary)
+                .color(p.text_secondary),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID),
         container(
             text("Let's get you set up.")
                 .size(theme::FONT_BODY)
-                .color(p.text_muted)
+                .color(p.text_muted),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 4.0),
@@ -499,8 +751,6 @@ fn view_step_name<'a>(current_name: &'a str, p: &OpenClawPalette) -> Element<'a,
         row1,
         Space::with_height(theme::GRID),
         row2,
-        Space::with_height(theme::GRID * 3.0),
-        back_and_next(p, true),
     ]
     .width(Length::Fill)
     .into()
@@ -517,8 +767,16 @@ fn view_step_voice(
         agent_name.to_string()
     };
 
-    let male_voices: Vec<(&str, &str)> = vec![("Calm", "calm-male"), ("Energetic", "energetic-male"), ("Deep", "deep-male")];
-    let female_voices: Vec<(&str, &str)> = vec![("Warm", "warm-female"), ("Clear", "clear-female"), ("Bright", "bright-female")];
+    let male_voices: Vec<(&str, &str)> = vec![
+        ("Calm", "calm-male"),
+        ("Energetic", "energetic-male"),
+        ("Deep", "deep-male"),
+    ];
+    let female_voices: Vec<(&str, &str)> = vec![
+        ("Warm", "warm-female"),
+        ("Clear", "clear-female"),
+        ("Bright", "bright-female"),
+    ];
 
     let selected_owned = selected.map(String::from);
 
@@ -533,8 +791,8 @@ fn view_step_voice(
         for (display, key) in voices {
             let is_sel = selected_owned.as_deref() == Some(key);
             items.push(radio_option(
-                &display.to_string(),
-                &String::new(),
+                display,
+                "",
                 is_sel,
                 WelcomeMessage::SelectVoice(key.to_string()),
                 p,
@@ -555,8 +813,6 @@ fn view_step_voice(
             make_col("Female", female_voices),
         ]
         .width(Length::Fill),
-        Space::with_height(theme::GRID * 3.0),
-        back_and_next(p, true),
     ]
     .width(Length::Fill)
     .into()
@@ -604,18 +860,17 @@ fn view_step_auth(
         items.push(Space::with_height(theme::GRID).into());
     }
 
-    items.push(Space::with_height(theme::GRID * 2.0).into());
-    items.push(back_and_next(p, true));
-
     column(items).width(Length::Fill).into()
 }
 
 fn view_step_ollama(
-    status: &OllamaStatus,
-    available: &[String],
-    selected: Option<&str>,
+    state: &WelcomeState,
     p: &OpenClawPalette,
 ) -> Element<'static, WelcomeMessage> {
+    let status = &state.ollama_status;
+    let available = &state.available_models;
+    let selected = state.selected_model.as_deref();
+
     let mut items: Vec<Element<'static, WelcomeMessage>> = vec![
         heading("Set up Ollama", p),
         Space::with_height(theme::GRID).into(),
@@ -636,10 +891,11 @@ fn view_step_ollama(
             );
             items.push(Space::with_height(theme::GRID * 2.0).into());
 
-            if available.is_empty() {
-                items.push(body_text("No models found. Pull a model to get started.", p));
-                items.push(Space::with_height(theme::GRID).into());
-                items.push(caption("Recommended models:", p));
+            if available.is_empty() && !state.pull_complete {
+                items.push(body_text(
+                    "No models found. Select one to download:",
+                    p,
+                ));
                 items.push(Space::with_height(theme::GRID).into());
 
                 for (name, desc) in OllamaClient::recommended_models() {
@@ -653,7 +909,112 @@ fn view_step_ollama(
                     ));
                     items.push(Space::with_height(theme::GRID * 0.5).into());
                 }
+
+                // Download button or progress
+                items.push(Space::with_height(theme::GRID * 1.5).into());
+
+                if state.pulling_model {
+                    // Progress bar
+                    items.push(progress_bar(state.pull_progress, p));
+                    items.push(Space::with_height(theme::GRID * 0.5).into());
+                    let status_text = format!(
+                        "{} — {:.0}%",
+                        state.pull_status, state.pull_progress
+                    );
+                    items.push(caption(&status_text, p));
+                } else if let Some(ref err) = state.pull_error {
+                    items.push(
+                        text(format!("Error: {}", err))
+                            .size(theme::FONT_CAPTION)
+                            .color(p.coral_bright)
+                            .into(),
+                    );
+                    items.push(Space::with_height(theme::GRID).into());
+                    if let Some(ref model) = state.selected_model {
+                        let pp = *p;
+                        items.push(
+                            button(
+                                container(
+                                    row![
+                                        bicon(Bootstrap::ArrowRepeat, 14.0, Color::WHITE),
+                                        Space::with_width(6),
+                                        text("Retry")
+                                            .size(theme::FONT_BODY)
+                                            .color(Color::WHITE),
+                                    ]
+                                    .align_y(Alignment::Center),
+                                )
+                                .padding(Padding::from([
+                                    theme::GRID,
+                                    theme::GRID * 2.0,
+                                ]))
+                                .style(move |_: &_| container::Style {
+                                    background: Some(iced::Background::Color(
+                                        pp.coral_bright,
+                                    )),
+                                    border: iced::Border {
+                                        radius: BORDER_RADIUS.into(),
+                                        ..Default::default()
+                                    },
+                                    ..Default::default()
+                                }),
+                            )
+                            .on_press(WelcomeMessage::PullModel(model.clone()))
+                            .style(button::text)
+                            .into(),
+                        );
+                    }
+                } else if let Some(ref model) = state.selected_model {
+                    // Download button
+                    let pp = *p;
+                    items.push(
+                        button(
+                            container(
+                                row![
+                                    bicon(Bootstrap::Download, 14.0, Color::WHITE),
+                                    Space::with_width(6),
+                                    text(format!("Download {}", model))
+                                        .size(theme::FONT_BODY)
+                                        .color(Color::WHITE),
+                                ]
+                                .align_y(Alignment::Center),
+                            )
+                            .padding(Padding::from([
+                                theme::GRID,
+                                theme::GRID * 2.0,
+                            ]))
+                            .style(move |_: &_| container::Style {
+                                background: Some(iced::Background::Color(pp.coral_bright)),
+                                border: iced::Border {
+                                    radius: BORDER_RADIUS.into(),
+                                    ..Default::default()
+                                },
+                                ..Default::default()
+                            }),
+                        )
+                        .on_press(WelcomeMessage::PullModel(model.clone()))
+                        .style(button::text)
+                        .into(),
+                    );
+                }
+            } else if state.pull_complete && available.is_empty() {
+                // Just finished pulling
+                items.push(
+                    row![
+                        bicon(Bootstrap::CheckCircleFill, 16.0, p.cyan_bright),
+                        Space::with_width(8),
+                        text(format!(
+                            "Model {} downloaded successfully!",
+                            state.selected_model.as_deref().unwrap_or("unknown")
+                        ))
+                        .size(theme::FONT_BODY)
+                        .color(p.cyan_bright),
+                    ]
+                    .align_y(Alignment::Center)
+                    .into(),
+                );
             } else {
+                // Has local models
                 items.push(body_text("Select a model:", p));
                 items.push(Space::with_height(theme::GRID).into());
 
@@ -719,11 +1080,7 @@ fn view_step_ollama(
         }
     }
 
-    items.push(Space::with_height(theme::GRID * 3.0).into());
-    items.push(back_and_next(p, true));
-
-    let content = column(items).width(Length::Fill);
-    scrollable(content).height(Length::Fill).into()
+    column(items).width(Length::Fill).into()
 }
 
 fn view_step_apikey<'a>(
@@ -753,81 +1110,27 @@ fn view_step_apikey<'a>(
                 .color(p.text_muted),
         ]
         .align_y(Alignment::Center),
-        Space::with_height(theme::GRID * 4.0),
-        back_and_next(p, true),
     ]
     .width(Length::Fill)
     .into()
 }
 
-fn view_step_messaging(p: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
-    let channels = [
-        (Bootstrap::Telegram, "Telegram"),
-        (Bootstrap::Whatsapp, "WhatsApp"),
-        (Bootstrap::Discord, "Discord"),
-        (Bootstrap::ChatDots, "Signal"),
-        (Bootstrap::Slack, "Slack"),
-    ];
+fn view_step_messaging<'a>(
+    messaging_state: &'a MessagingState,
+    p: &OpenClawPalette,
+) -> Element<'a, WelcomeMessage> {
+    let messaging_view = crate::messaging_setup::view_messaging_setup(messaging_state, p);
+    let mapped: Element<'a, WelcomeMessage> = messaging_view.map(WelcomeMessage::Messaging);
 
-    let mut items: Vec<Element<'static, WelcomeMessage>> = vec![
+    column![
         heading("Connect your messaging", p),
-        Space::with_height(theme::GRID).into(),
+        Space::with_height(theme::GRID),
         body_text("You can do this later.", p),
-        Space::with_height(theme::GRID * 2.0).into(),
-    ];
-
-    for (icon, name) in &channels {
-        let pp = *p;
-        let channel_row = button(
-            container(
-                row![
-                    bicon(*icon, 20.0, pp.text_primary),
-                    Space::with_width(12),
-                    text(*name)
-                        .size(theme::FONT_BODY)
-                        .color(pp.text_primary),
-                    Space::with_width(Length::Fill),
-                    text("Add")
-                        .size(theme::FONT_CAPTION)
-                        .color(pp.text_muted),
-                    Space::with_width(4),
-                    bicon(Bootstrap::ChevronRight, 12.0, pp.text_muted),
-                ]
-                .align_y(Alignment::Center)
-                .width(Length::Fill),
-            )
-            .padding(Padding::from([theme::GRID * 1.5, theme::GRID * 2.0]))
-            .width(Length::Fill)
-            .style(move |_: &_| container::Style {
-                border: iced::Border {
-                    color: pp.border_subtle,
-                    width: 1.0,
-                    radius: (BORDER_RADIUS * 0.75).into(),
-                },
-                ..Default::default()
-            }),
-        )
-        .style(button::text)
-        .width(Length::Fill);
-
-        items.push(channel_row.into());
-        items.push(Space::with_height(theme::GRID).into());
-    }
-
-    items.push(Space::with_height(theme::GRID * 2.0).into());
-
-    // Bottom nav: Skip + Next
-    let nav = row![
-        secondary_btn("Skip for now", WelcomeMessage::SkipMessaging, p),
-        Space::with_width(Length::Fill),
-        primary_btn("Next", Bootstrap::ArrowRight, WelcomeMessage::NextStep, p),
+        Space::with_height(theme::GRID * 2.0),
+        mapped,
     ]
-    .align_y(Alignment::Center)
-    .width(Length::Fill);
-
-    items.push(nav.into());
-
-    column(items).width(Length::Fill).into()
+    .width(Length::Fill)
+    .into()
 }
 
 fn view_step_ready(agent_name: &str, p: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
@@ -845,21 +1148,21 @@ fn view_step_ready(agent_name: &str, p: &OpenClawPalette) -> Element<'static, We
         container(
             text("✨ All set!")
                 .size(theme::FONT_DISPLAY * 0.6)
-                .color(p.coral_bright)
+                .color(p.coral_bright),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 2.0),
         container(
             text(ready_text)
                 .size(theme::FONT_HEADING)
-                .color(p.text_primary)
+                .color(p.text_primary),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 3.0),
         container(
             text(try_text)
                 .size(theme::FONT_BODY)
-                .color(p.text_secondary)
+                .color(p.text_secondary),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 4.0),

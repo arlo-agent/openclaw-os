@@ -4,6 +4,7 @@ mod conversation;
 mod device_identity;
 mod dock;
 mod gateway;
+mod messaging_setup;
 mod ollama;
 mod theme;
 mod welcome;
@@ -207,19 +208,34 @@ impl App {
                     let detected = matches!(status, OllamaStatus::Running(_));
                     self.welcome.ollama_status = status;
                     if detected {
-                        // Also fetch the model list
                         self.ollama_client.list_models();
                     }
                 }
                 OllamaEvent::ModelsListed(models) => {
                     self.welcome.available_models =
                         models.iter().map(|m| m.display_name()).collect();
-                    // Auto-select first model if none selected
                     if self.welcome.selected_model.is_none() && !models.is_empty() {
                         self.welcome.selected_model = Some(models[0].name.clone());
                     }
                 }
-                _ => {}
+                OllamaEvent::ModelPullProgress { percent, status, .. } => {
+                    self.welcome.pull_progress = percent;
+                    self.welcome.pull_status = status;
+                }
+                OllamaEvent::ModelPullComplete(model) => {
+                    self.welcome.pulling_model = false;
+                    self.welcome.pull_complete = true;
+                    self.welcome.pull_status = format!("{} downloaded!", model);
+                    // Refresh model list
+                    self.ollama_client.list_models();
+                }
+                OllamaEvent::ModelPullError { error, .. } => {
+                    self.welcome.pulling_model = false;
+                    self.welcome.pull_error = Some(error);
+                }
+                OllamaEvent::Error(e) => {
+                    eprintln!("[ollama] Error: {}", e);
+                }
             }
         }
     }
@@ -254,18 +270,29 @@ impl App {
                 }
             },
             Message::Welcome(welcome_msg) => {
-                // When entering the OllamaSetup step, trigger a status check
+                // Check if this is a PullModel request before update consumes it
+                let pull_request = if let WelcomeMessage::PullModel(ref model) = welcome_msg {
+                    Some(model.clone())
+                } else {
+                    None
+                };
+
                 let was_ollama_step = matches!(self.welcome.step, WizardStep::OllamaSetup);
                 let finished = welcome::update_welcome(&mut self.welcome, welcome_msg);
                 let is_ollama_step = matches!(self.welcome.step, WizardStep::OllamaSetup);
+
+                // Trigger model pull if requested
+                if let Some(model) = pull_request {
+                    self.ollama_client.pull_model(&model);
+                }
 
                 if !was_ollama_step && is_ollama_step {
                     self.ollama_client.check_status();
                 }
 
                 if finished {
-                    // Wizard complete — transition to ambient view
-                    // TODO: write config files based on welcome state
+                    // Write config files, then transition to ambient
+                    welcome::write_wizard_config(&self.welcome);
                     self.view = AppView::Ambient;
                 }
             }
