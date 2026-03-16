@@ -209,6 +209,7 @@ impl Gateway {
             let v: Value = serde_json::from_str(text).unwrap_or_default();
             if v.get("ok").and_then(|o| o.as_bool()) == Some(true) {
                 eprintln!("[gateway] Connected! Protocol handshake complete.");
+                eprintln!("[gateway] Hello response: {}", text);
                 is_connected = true;
             } else {
                 eprintln!("[gateway] Connect rejected: {}", text);
