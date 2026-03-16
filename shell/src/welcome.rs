@@ -233,60 +233,150 @@ pub fn write_wizard_config(state: &WelcomeState) {
     let _ = std::fs::create_dir_all(&workspace_dir);
     let _ = std::fs::create_dir_all(format!("{}/voice", workspace_dir));
 
-    // 1. Write openclaw.json
-    let llm_config = match state.auth_choice {
-        AuthProvider::Ollama => {
-            let model = state.selected_model.as_deref().unwrap_or("llama3.3");
-            serde_json::json!({
-                "llm": {
-                    "provider": "ollama",
-                    "model": model,
-                    "baseUrl": "http://127.0.0.1:11434"
-                }
-            })
-        }
-        AuthProvider::Anthropic => serde_json::json!({
-            "llm": {
-                "provider": "anthropic",
-                "model": "claude-sonnet-4-20250514",
-                "apiKey": state.api_key
-            }
-        }),
-        AuthProvider::OpenAI => serde_json::json!({
-            "llm": {
-                "provider": "openai",
-                "model": "gpt-4o",
-                "apiKey": state.api_key
-            }
-        }),
-        AuthProvider::OpenRouter => serde_json::json!({
-            "llm": {
-                "provider": "openrouter",
-                "model": "openrouter/auto",
-                "apiKey": state.api_key
-            }
-        }),
+    let agent_name = if state.agent_name.is_empty() {
+        "Atlas"
+    } else {
+        &state.agent_name
     };
 
-    // Merge messaging config if any channels configured
+    // 1. Write openclaw.json — must match the real OpenClaw config schema
+    // Top-level keys: auth, models, agents, channels, gateway, plugins, etc.
+    // NOT "llm" — that's not a valid key.
+    let (provider_key, model_id, auth_profile) = match state.auth_choice {
+        AuthProvider::Ollama => {
+            let model = state.selected_model.as_deref().unwrap_or("llama3.3");
+            ("ollama", model.to_string(), serde_json::json!({
+                "provider": "ollama",
+                "mode": "none"
+            }))
+        }
+        AuthProvider::Anthropic => {
+            ("anthropic", "claude-sonnet-4-20250514".to_string(), serde_json::json!({
+                "provider": "anthropic",
+                "mode": "token"
+            }))
+        }
+        AuthProvider::OpenAI => {
+            ("openai", "gpt-4o".to_string(), serde_json::json!({
+                "provider": "openai",
+                "mode": "token"
+            }))
+        }
+        AuthProvider::OpenRouter => {
+            ("openrouter", "openrouter/auto".to_string(), serde_json::json!({
+                "provider": "openrouter",
+                "mode": "token"
+            }))
+        }
+    };
+
+    let full_model_ref = format!("{}/{}", provider_key, model_id);
+
+    // Build provider config
+    let mut providers = serde_json::json!({});
+    match state.auth_choice {
+        AuthProvider::Ollama => {
+            providers[provider_key] = serde_json::json!({
+                "baseUrl": "http://127.0.0.1:11434",
+                "auth": "none",
+                "api": "openai-completions",
+                "models": [{
+                    "id": model_id,
+                    "name": model_id
+                }]
+            });
+        }
+        AuthProvider::Anthropic => {
+            // Anthropic is built-in, no need to define provider
+        }
+        AuthProvider::OpenAI => {
+            // OpenAI is built-in, no need to define provider
+        }
+        AuthProvider::OpenRouter => {
+            providers[provider_key] = serde_json::json!({
+                "baseUrl": "https://openrouter.ai/api/v1",
+                "auth": "api-key",
+                "api": "openai-completions"
+            });
+        }
+    }
+
+    let mut config = serde_json::json!({
+        "auth": {
+            "profiles": {
+                provider_key: auth_profile
+            }
+        },
+        "agents": {
+            "defaults": {
+                "model": {
+                    "primary": full_model_ref
+                },
+                "workspace": format!("{}/workspace", openclaw_dir)
+            },
+            "list": [{
+                "id": "main",
+                "default": true
+            }]
+        },
+        "gateway": {
+            "port": 18789,
+            "mode": "local",
+            "bind": "loopback"
+        }
+    });
+
+    // Add models.providers only if we have custom providers (Ollama, OpenRouter)
+    if providers.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
+        config["models"] = serde_json::json!({
+            "providers": providers
+        });
+    }
+
+    // Add API key to env hint for cloud providers
+    if !state.api_key.is_empty() && state.auth_choice != AuthProvider::Ollama {
+        let env_var = match state.auth_choice {
+            AuthProvider::Anthropic => "ANTHROPIC_API_KEY",
+            AuthProvider::OpenAI => "OPENAI_API_KEY",
+            AuthProvider::OpenRouter => "OPENROUTER_API_KEY",
+            _ => "",
+        };
+        if !env_var.is_empty() {
+            // Write API key to a secrets file (not in the config JSON)
+            let secrets_content = format!("{}={}\n", env_var, state.api_key);
+            let _ = std::fs::write(format!("{}/.env", openclaw_dir), secrets_content);
+            eprintln!("[wizard] API key written to {}/.env as {}", openclaw_dir, env_var);
+        }
+    }
+
+    // Add messaging channels
     let messaging_configs = crate::messaging_setup::generate_messaging_config(&state.messaging);
-    let mut config = llm_config;
     if !messaging_configs.is_empty() {
-        config.as_object_mut().unwrap().insert(
-            "channels".to_string(),
-            serde_json::Value::Array(messaging_configs),
-        );
+        let mut channels = serde_json::json!({});
+        for ch_config in &messaging_configs {
+            let ch_type = ch_config.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+            let mut ch_obj = ch_config.clone();
+            ch_obj.as_object_mut().map(|o| {
+                o.remove("type");
+                o.insert("enabled".to_string(), serde_json::Value::Bool(true));
+            });
+            channels[ch_type] = ch_obj;
+        }
+        config["channels"] = channels;
+
+        // Add matching plugin entries
+        let mut plugin_entries = serde_json::json!({});
+        for ch_config in &messaging_configs {
+            let ch_type = ch_config.get("type").and_then(|t| t.as_str()).unwrap_or("unknown");
+            plugin_entries[ch_type] = serde_json::json!({ "enabled": true });
+        }
+        config["plugins"] = serde_json::json!({ "entries": plugin_entries });
     }
 
     let config_json = serde_json::to_string_pretty(&config).unwrap_or_default();
     let _ = std::fs::write(format!("{}/openclaw.json", openclaw_dir), config_json);
 
     // 2. Write IDENTITY.md
-    let agent_name = if state.agent_name.is_empty() {
-        "Atlas"
-    } else {
-        &state.agent_name
-    };
     let identity = format!("# IDENTITY.md\n\n- **Name:** {}\n", agent_name);
     let _ = std::fs::write(format!("{}/IDENTITY.md", workspace_dir), identity);
 
