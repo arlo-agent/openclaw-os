@@ -1,4 +1,4 @@
-use crate::theme::{self, OpenClawPalette, ThemeMode, BORDER_RADIUS};
+use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
 use crate::widgets::glass_card;
 use iced::widget::{button, container, row, text, text_input};
 use iced::{Alignment, Color, Element, Length, Padding, Shadow, Vector};
@@ -22,7 +22,7 @@ pub fn view_dock<'a>(
     input_value: &str,
     listening: bool,
     palette: &OpenClawPalette,
-    theme_mode: ThemeMode,
+    _theme_mode: crate::theme::ThemeMode,
 ) -> Element<'a, DockMessage> {
     let p = *palette;
 
@@ -53,21 +53,10 @@ pub fn view_dock<'a>(
             .style(button::text)
     };
 
-    // Theme toggle
-    let theme_icon = match theme_mode {
-        ThemeMode::Dark => Bootstrap::SunFill,
-        ThemeMode::Light => Bootstrap::MoonStarsFill,
-    };
-    let theme_btn = button(icon(theme_icon, 16.0, p.text_secondary))
-        .on_press(DockMessage::ToggleTheme)
-        .padding(Padding::from([theme::GRID * 0.5, theme::GRID]))
-        .style(button::text);
-
     let dock_content = row![
         mic_btn,
         container(input).width(Length::Fill),
         send_btn,
-        theme_btn,
     ]
     .spacing(theme::GRID as u16 / 2)
     .align_y(Alignment::Center)

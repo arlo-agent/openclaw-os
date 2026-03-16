@@ -7,6 +7,7 @@ mod gateway;
 mod messaging_setup;
 mod notifications;
 mod ollama;
+mod statusbar;
 mod theme;
 mod welcome;
 mod widgets;
@@ -18,6 +19,7 @@ use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
 use iced::{Alignment, Element, Length, Padding, Size, Subscription, Theme};
 use notifications::{NotificationMessage, NotificationState};
+use statusbar::StatusBarMessage;
 use ollama::{OllamaClient, OllamaEvent, OllamaStatus};
 use std::time::{Duration, Instant};
 use theme::{OpenClawPalette, ThemeMode};
@@ -68,6 +70,7 @@ enum Message {
     Dock(DockMessage),
     Welcome(WelcomeMessage),
     Notification(NotificationMessage),
+    StatusBar(StatusBarMessage),
 }
 
 impl Default for App {
@@ -343,6 +346,36 @@ impl App {
                     self.notifs.panel_open = false;
                 }
             },
+            Message::StatusBar(sb_msg) => match sb_msg {
+                StatusBarMessage::ToggleTheme => {
+                    self.theme_mode = self.theme_mode.toggle();
+                    self.particles.set_theme_mode(self.theme_mode);
+                }
+                StatusBarMessage::Notification(notif_msg) => {
+                    // Delegate to notification handler
+                    match notif_msg {
+                        NotificationMessage::TogglePanel => {
+                            self.notifs.panel_open = !self.notifs.panel_open;
+                        }
+                        NotificationMessage::ClickNotification(msg_index) => {
+                            if let Some(idx) = self.notifs.notifications.iter().position(|n| n.message_index == msg_index) {
+                                self.notifs.mark_read(idx);
+                            }
+                            self.notifs.panel_open = false;
+                            self.view = AppView::Conversation;
+                        }
+                        NotificationMessage::DismissToast => {
+                            if let Some(idx) = self.notifs.notifications.iter().rposition(|n| n.toast_visible()) {
+                                self.notifs.mark_read(idx);
+                            }
+                        }
+                        NotificationMessage::MarkAllRead => {
+                            self.notifs.mark_all_read();
+                            self.notifs.panel_open = false;
+                        }
+                    }
+                }
+            },
             Message::Dock(dock_msg) => match dock_msg {
                 DockMessage::ToggleVoice => {
                     self.listening = !self.listening;
@@ -379,6 +412,22 @@ impl App {
             .view()
             .map(|_: ()| Message::Tick(Instant::now()));
 
+        // Global status bar (visible on all screens except welcome wizard)
+        let show_statusbar = !matches!(self.view, AppView::Welcome);
+
+        let status_bar_view: Element<Message> = if show_statusbar {
+            statusbar::view_statusbar(
+                self.connected,
+                self.agent_active,
+                self.theme_mode,
+                &self.notifs,
+                &palette,
+            )
+            .map(Message::StatusBar)
+        } else {
+            Space::new(0, 0).into()
+        };
+
         let main_content: Element<Message> = match &self.view {
             AppView::Welcome => {
                 welcome::view_welcome(&self.welcome, &palette)
@@ -387,13 +436,6 @@ impl App {
             AppView::Ambient => {
                 let clock =
                     ambient::view_clock(&palette).map(|_: ()| Message::Tick(Instant::now()));
-                let status =
-                    ambient::view_status_dots(self.connected, self.agent_active, &palette)
-                        .map(|_: ()| Message::Tick(Instant::now()));
-
-                // Bell icon with notification badge
-                let bell = notifications::view_bell(self.notifs.unread_count(), &palette)
-                    .map(Message::Notification);
 
                 let cards_view = cards::view_cards(&self.cards, &palette).map(Message::Card);
 
@@ -402,30 +444,14 @@ impl App {
                     .width(400)
                     .height(Length::Fill);
 
-                let status_bar = container(
-                    row![
-                        status,
-                        Space::with_width(Length::Fill),
-                        bell,
-                    ]
-                    .align_y(Alignment::Center)
-                    .width(Length::Fill),
-                )
-                .padding(Padding::from(theme::GRID * 2.0));
+                // Toast notification overlay or notification panel
+                let mut left_items: Vec<Element<Message>> = Vec::new();
 
-                // Toast notification overlay
-                let mut left_items: Vec<Element<Message>> = vec![
-                    status_bar.into(),
-                ];
-
-                // Show notification panel if open
                 if self.notifs.panel_open {
                     let panel = notifications::view_panel(&self.notifs, &palette)
                         .map(Message::Notification);
                     left_items.push(panel);
-                }
-                // Show toast if there's an active one (and panel is closed)
-                else if let Some(toast) = self.notifs.active_toast() {
+                } else if let Some(toast) = self.notifs.active_toast() {
                     let toast_view = notifications::view_toast(toast, &palette)
                         .map(Message::Notification);
                     left_items.push(toast_view);
@@ -452,6 +478,7 @@ impl App {
                 dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode)
                     .map(Message::Dock);
             column![
+                status_bar_view,
                 container(main_content)
                     .width(Length::Fill)
                     .height(Length::Fill),
