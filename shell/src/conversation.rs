@@ -1,52 +1,37 @@
 use crate::theme::{self, OpenClawPalette};
 use crate::widgets::glass_card;
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, markdown, row, scrollable, text, Space};
 use iced::widget::text::Shaping;
-use iced::{Alignment, Element, Length, Padding};
+use iced::{Alignment, Element, Length, Padding, Theme};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
-#[derive(Debug, Clone)]
 pub struct ChatMessage {
     pub from_user: bool,
     pub content: String,
-    pub revealed_chars: usize,
+    /// Pre-parsed markdown items for agent messages
+    pub markdown_items: Vec<markdown::Item>,
 }
 
 impl ChatMessage {
     pub fn new(from_user: bool, content: impl Into<String>) -> Self {
         let content = content.into();
-        let revealed = if from_user { content.len() } else { 0 };
+        let markdown_items = if from_user {
+            Vec::new()
+        } else {
+            markdown::parse(&content).collect()
+        };
         Self {
             from_user,
             content,
-            revealed_chars: revealed,
+            markdown_items,
         }
-    }
-
-    pub fn tick_typewriter(&mut self) {
-        if self.revealed_chars < self.content.len() {
-            self.revealed_chars += 1;
-        }
-    }
-
-    pub fn is_fully_revealed(&self) -> bool {
-        self.revealed_chars >= self.content.len()
-    }
-
-    pub fn visible_text(&self) -> &str {
-        let end = self
-            .content
-            .char_indices()
-            .nth(self.revealed_chars)
-            .map(|(i, _)| i)
-            .unwrap_or(self.content.len());
-        &self.content[..end]
     }
 }
 
 #[derive(Debug, Clone)]
 pub enum ConversationMessage {
     Back,
+    LinkClicked(markdown::Url),
 }
 
 /// Render the conversation view — messages only (no input, dock handles that).
@@ -74,20 +59,37 @@ pub fn view_conversation<'a>(
 
         let label = if msg.from_user { "You" } else { "Agent" };
 
+        let content_widget: Element<'a, ConversationMessage> = if msg.from_user {
+            // User messages: plain text
+            text(&msg.content)
+                .size(theme::FONT_BODY)
+                .color(p.text_primary)
+                .shaping(Shaping::Advanced)
+                .into()
+        } else {
+            // Agent messages: rendered markdown
+            markdown::view(&msg.markdown_items, markdown::Settings::default(), markdown::Style::from_palette(iced::theme::Palette {
+                background: p.bg_deep,
+                text: p.text_primary,
+                primary: p.coral_bright,
+                success: p.cyan_bright,
+                danger: p.coral_dark,
+            }))
+            .map(ConversationMessage::LinkClicked)
+            .into()
+        };
+
         let bubble = container(
             column![
                 text(label)
                     .size(theme::FONT_CAPTION)
                     .color(p.text_secondary),
-                text(msg.visible_text())
-                    .size(theme::FONT_BODY)
-                    .color(p.text_primary)
-                    .shaping(Shaping::Advanced),
+                content_widget,
             ]
             .spacing(4),
         )
         .padding(Padding::from(theme::GRID * 1.5))
-        .max_width(500)
+        .max_width(600)
         .style(move |_theme: &_| bubble_style);
 
         let aligned_row = row![Space::new(0, 0), bubble]

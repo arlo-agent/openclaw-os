@@ -167,11 +167,6 @@ impl App {
                 for card in &mut self.cards {
                     card.tick();
                 }
-                for msg in &mut self.chat_messages {
-                    if !msg.is_fully_revealed() {
-                        msg.tick_typewriter();
-                    }
-                }
                 // Gateway tick + process events
                 self.gateway.tick();
                 self.process_gateway_events();
@@ -184,6 +179,10 @@ impl App {
             Message::Conversation(conv_msg) => match conv_msg {
                 ConversationMessage::Back => {
                     self.view = AppView::Ambient;
+                }
+                ConversationMessage::LinkClicked(url) => {
+                    // Open URL in default browser
+                    let _ = open::that(url.as_str());
                 }
             },
             Message::Dock(dock_msg) => match dock_msg {
