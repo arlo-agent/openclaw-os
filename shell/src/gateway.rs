@@ -319,11 +319,15 @@ impl Gateway {
             "res" => {
                 // Response to a request — we mostly care about errors
                 if v.get("ok").and_then(|o| o.as_bool()) == Some(false) {
-                    let err = v
+                    let err_msg = v
                         .get("error")
-                        .and_then(|e| e.as_str())
-                        .unwrap_or("unknown error");
-                    eprintln!("[gateway] Request failed: {}", err);
+                        .and_then(|e| {
+                            // error can be a string or an object with "message" field
+                            e.as_str().map(|s| s.to_string())
+                                .or_else(|| e.get("message").and_then(|m| m.as_str()).map(|s| s.to_string()))
+                        })
+                        .unwrap_or_else(|| format!("unknown error: {}", v));
+                    eprintln!("[gateway] Request failed: {}", err_msg);
                 }
             }
             _ => {}
