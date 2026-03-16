@@ -1,10 +1,7 @@
-//! Generative ambient background — soft glowing orbs with subtle flow.
+//! Generative ambient background — ultra-smooth glowing orbs with subtle flow.
 //!
-//! Renders a calm, organic background with:
-//! - Large soft gradient orbs that drift slowly (aurora-like)
-//! - Small floating particles with soft glow
-//! - No hard lines, no grids, no visible edges
-//! - Everything uses filled circles with alpha for smoothness
+//! Uses many concentric filled circles with tiny alpha steps to simulate
+//! smooth radial gradients. No visible rings, no hard edges.
 
 use crate::theme::{OpenClawPalette, ThemeMode};
 use iced::mouse;
@@ -13,18 +10,16 @@ use iced::{Color, Element, Length, Point, Rectangle, Renderer, Theme};
 use noise::{NoiseFn, OpenSimplex};
 use rand::Rng;
 
-/// Large ambient orbs (aurora-like glow)
-const ORB_COUNT: usize = 6;
-/// Small floating particles
-const PARTICLE_COUNT: usize = 60;
+const ORB_COUNT: usize = 5;
+const PARTICLE_COUNT: usize = 50;
+/// More steps = smoother gradient. 40 is smooth enough to be invisible.
+const ORB_GRADIENT_STEPS: usize = 40;
 
 struct Orb {
-    x: f32,
-    y: f32,
     base_x: f32,
     base_y: f32,
     radius: f32,
-    color_phase: f32,  // 0.0 = coral, 1.0 = cyan
+    color_phase: f32,
 }
 
 struct Particle {
@@ -71,72 +66,49 @@ impl ParticleField {
 
         self.time += 0.004;
 
-        // Initialize once
         if !self.initialized {
             self.initialized = true;
             let mut rng = rand::thread_rng();
 
-            // Create large ambient orbs spread across the screen
             self.orbs = (0..ORB_COUNT)
                 .map(|i| {
                     let t = i as f32 / ORB_COUNT as f32;
-                    let bx = t * width * 0.8 + width * 0.1;
-                    let by = rng.gen_range(height * 0.15..height * 0.85);
                     Orb {
-                        x: bx,
-                        y: by,
-                        base_x: bx,
-                        base_y: by,
-                        radius: rng.gen_range(width * 0.12..width * 0.25),
+                        base_x: t * width * 0.7 + width * 0.15,
+                        base_y: rng.gen_range(height * 0.2..height * 0.8),
+                        radius: rng.gen_range(width * 0.1..width * 0.18),
                         color_phase: t,
                     }
                 })
                 .collect();
 
-            // Create small particles
             self.particles = (0..PARTICLE_COUNT)
                 .map(|_| Particle {
                     x: rng.gen_range(0.0..width),
                     y: rng.gen_range(0.0..height),
-                    vx: rng.gen_range(-0.08..0.08),
-                    vy: rng.gen_range(-0.06..0.06),
-                    size: rng.gen_range(1.0..3.0),
+                    vx: rng.gen_range(-0.06..0.06),
+                    vy: rng.gen_range(-0.04..0.04),
+                    size: rng.gen_range(1.5..3.5),
                     phase: rng.gen_range(0.0..std::f32::consts::TAU),
                     color_phase: rng.gen_range(0.0..1.0),
                 })
                 .collect();
         }
 
+        // Move particles
         let w = width;
         let h = height;
-
-        // Drift orbs with noise
-        for (i, orb) in self.orbs.iter_mut().enumerate() {
-            let seed = i as f64 * 7.3;
-            let nx = self.noise.get([seed, self.time * 0.15, 0.0]) as f32;
-            let ny = self.noise.get([seed + 100.0, self.time * 0.12, 0.0]) as f32;
-            orb.x = orb.base_x + nx * w * 0.08;
-            orb.y = orb.base_y + ny * h * 0.08;
-            // Slowly shift color
-            orb.color_phase = (orb.color_phase + 0.0003) % 1.0;
-        }
-
-        // Move particles with gentle noise-based flow
         for p in &mut self.particles {
             let nx = p.x as f64 * 0.003;
             let ny = p.y as f64 * 0.003;
             let angle = self.noise.get([nx, ny, self.time * 0.2]) as f32 * std::f32::consts::TAU;
-
-            p.vx += angle.cos() * 0.005;
-            p.vy += angle.sin() * 0.005;
+            p.vx += angle.cos() * 0.004;
+            p.vy += angle.sin() * 0.004;
             p.vx *= 0.99;
             p.vy *= 0.99;
-
             p.x += p.vx;
             p.y += p.vy;
             p.phase += 0.008;
-
-            // Wrap edges smoothly
             if p.x < -20.0 { p.x += w + 40.0; }
             if p.x > w + 20.0 { p.x -= w + 40.0; }
             if p.y < -20.0 { p.y += h + 40.0; }
@@ -153,10 +125,18 @@ impl ParticleField {
             .into()
     }
 
+    /// Blend between coral and cyan. In light mode, use darker/more saturated variants.
     fn blend_color(&self, t: f32, alpha: f32, palette: &OpenClawPalette) -> Color {
         let t = t.clamp(0.0, 1.0);
-        let c = palette.coral_bright;
-        let n = palette.cyan_bright;
+        let is_dark = matches!(self.theme_mode, ThemeMode::Dark);
+
+        // In light mode use the mid (darker/more saturated) brand colors
+        let (c, n) = if is_dark {
+            (palette.coral_bright, palette.cyan_bright)
+        } else {
+            (palette.coral_mid, palette.cyan_mid)
+        };
+
         Color::from_rgba(
             c.r * (1.0 - t) + n.r * t,
             c.g * (1.0 - t) + n.g * t,
@@ -178,51 +158,72 @@ impl canvas::Program<()> for ParticleField {
         _cursor: mouse::Cursor,
     ) -> Vec<Geometry> {
         let geometry = self.cache.draw(renderer, bounds.size(), |frame: &mut Frame| {
+            let w = bounds.width;
+            let h = bounds.height;
             let palette = OpenClawPalette::from_mode(self.theme_mode);
             let is_dark = matches!(self.theme_mode, ThemeMode::Dark);
 
-            // Breathing pulse
             let breath = ((self.time * 0.15).sin() * 0.5 + 0.5) as f32;
 
-            // === Layer 1: Large soft ambient orbs ===
-            // These create the aurora-like color atmosphere
-            for orb in &self.orbs {
-                let base_alpha = if is_dark { 0.06 } else { 0.04 };
-                let alpha = base_alpha * (0.7 + breath * 0.3);
+            // === Large soft orbs ===
+            // Draw from outermost to innermost (painter's algorithm).
+            // Each ring is slightly smaller and slightly more opaque.
+            // With 40 steps the rings are invisible — looks like a smooth gradient.
+            for (i, orb) in self.orbs.iter().enumerate() {
+                let seed = i as f64 * 7.3;
+                let dx = self.noise.get([seed, self.time * 0.12, 0.0]) as f32;
+                let dy = self.noise.get([seed + 100.0, self.time * 0.1, 0.0]) as f32;
+                let cx = orb.base_x + dx * w * 0.06;
+                let cy = orb.base_y + dy * h * 0.06;
+                let ct = (orb.color_phase + self.time as f32 * 0.008) % 1.0;
 
-                // Draw multiple concentric circles with decreasing alpha (soft glow)
-                let steps = 8;
-                for step in (0..steps).rev() {
-                    let t = step as f32 / steps as f32;
-                    let r = orb.radius * (0.3 + t * 0.7);
-                    let a = alpha * (1.0 - t) * (1.0 - t); // quadratic falloff
-                    if a < 0.001 { continue; }
+                // Peak alpha at center of the orb
+                let peak_alpha = if is_dark {
+                    0.10 * (0.75 + breath * 0.25)
+                } else {
+                    0.14 * (0.75 + breath * 0.25)
+                };
 
-                    let circle = Path::circle(Point::new(orb.x, orb.y), r);
-                    frame.fill(&circle, self.blend_color(orb.color_phase, a, &palette));
+                // Draw rings from outside in
+                for step in 0..ORB_GRADIENT_STEPS {
+                    // t goes from 1.0 (outermost) to ~0.0 (center)
+                    let t = 1.0 - (step as f32 / ORB_GRADIENT_STEPS as f32);
+                    let r = orb.radius * t;
+                    if r < 0.5 { continue; }
+
+                    // Smooth cubic falloff: more transparent at edges, opaque at center
+                    // Each ring adds a tiny bit of alpha on top of previous rings
+                    let ring_alpha = peak_alpha / ORB_GRADIENT_STEPS as f32;
+                    // Weight inner rings slightly more
+                    let weighted_alpha = ring_alpha * (1.0 - t * t * 0.5);
+
+                    if weighted_alpha < 0.0005 { continue; }
+
+                    let circle = Path::circle(Point::new(cx, cy), r);
+                    frame.fill(&circle, self.blend_color(ct, weighted_alpha, &palette));
                 }
             }
 
-            // === Layer 2: Floating particles with glow ===
+            // === Soft particles ===
             for p in &self.particles {
-                let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.6;
-                let base_alpha = if is_dark { 0.15 } else { 0.1 };
-                let alpha = base_alpha * (0.4 + pulse);
+                let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
+                let base_alpha = if is_dark { 0.12 } else { 0.18 };
+                let alpha = base_alpha * (0.5 + pulse);
                 let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
-                // Outer glow (3 layers for smoothness)
-                let glow3 = Path::circle(Point::new(p.x, p.y), p.size * 6.0);
-                frame.fill(&glow3, self.blend_color(ct, alpha * 0.04, &palette));
+                // 3-layer glow for smoothness
+                let glow_outer = Path::circle(Point::new(p.x, p.y), p.size * 5.0);
+                frame.fill(&glow_outer, self.blend_color(ct, alpha * 0.03, &palette));
 
-                let glow2 = Path::circle(Point::new(p.x, p.y), p.size * 3.5);
-                frame.fill(&glow2, self.blend_color(ct, alpha * 0.1, &palette));
+                let glow_mid = Path::circle(Point::new(p.x, p.y), p.size * 2.5);
+                frame.fill(&glow_mid, self.blend_color(ct, alpha * 0.08, &palette));
 
-                let glow1 = Path::circle(Point::new(p.x, p.y), p.size * 2.0);
-                frame.fill(&glow1, self.blend_color(ct, alpha * 0.25, &palette));
+                let glow_inner = Path::circle(Point::new(p.x, p.y), p.size * 1.5);
+                frame.fill(&glow_inner, self.blend_color(ct, alpha * 0.2, &palette));
 
-                // Core
-                let core = Path::circle(Point::new(p.x, p.y), p.size);
-                frame.fill(&core, self.blend_color(ct, alpha, &palette));
+                // Bright core
+                let core = Path::circle(Point::new(p.x, p.y), p.size * 0.7);
+                frame.fill(&core, self.blend_color(ct, alpha * 0.6, &palette));
             }
         });
 
