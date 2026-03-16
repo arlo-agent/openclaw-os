@@ -428,12 +428,16 @@ impl Gateway {
                             let done = parts[3] == "1";
                             let chunk = parts[4];
 
-                            let buffer = self.streaming_buffer.entry(run_id.clone()).or_default();
-                            buffer.push_str(chunk);
+                            // Each event contains the FULL text, not incremental — replace, don't append
+                            if !chunk.is_empty() {
+                                self.streaming_buffer.insert(run_id.clone(), chunk.to_string());
+                            }
 
                             if done {
                                 let full_text = self.streaming_buffer.remove(&run_id).unwrap_or_default();
-                                self.pending_events.push(GatewayEvent::AgentResponse(full_text));
+                                if !full_text.is_empty() {
+                                    self.pending_events.push(GatewayEvent::AgentResponse(full_text));
+                                }
                             }
                         }
                     }
@@ -518,39 +522,35 @@ fn handle_ws_message(v: &Value, tx: &mpsc::Sender<GatewayEvent>) {
             let event_name = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
             if event_name == "chat" {
                 if let Some(payload) = v.get("payload") {
-                    let kind = payload.get("kind").and_then(|k| k.as_str()).unwrap_or("");
-                    let done = payload.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
                     let run_id = payload.get("runId").and_then(|r| r.as_str()).unwrap_or("unknown").to_string();
+                    let state = payload.get("state").and_then(|s| s.as_str()).unwrap_or("");
+                    let done = state == "final";
 
-                    eprintln!("[gateway] chat event: kind={} done={} runId={} payload={}", kind, done, run_id, payload);
+                    // Extract text from message.content[0].text
+                    let text = payload
+                        .get("message")
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|item| item.get("text"))
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                    match kind {
-                        "text" => {
-                            let text = payload.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                            let _ = tx.send(GatewayEvent::AgentResponse(format!(
-                                "\x00STREAM\x00{}\x00{}\x00{}",
-                                run_id,
-                                if done { "1" } else { "0" },
-                                text
-                            )));
-                        }
-                        "status" | "thinking" | "tool-start" | "tool-output" => {
-                            // If done arrives on a non-text event, signal completion
-                            if done {
-                                let _ = tx.send(GatewayEvent::AgentResponse(format!(
-                                    "\x00STREAM\x00{}\x001\x00", run_id
-                                )));
-                            }
-                        }
-                        _ => {
-                            // Log unknown kinds for debugging
-                            eprintln!("[gateway] Unknown chat event kind: {}", kind);
-                            if done {
-                                let _ = tx.send(GatewayEvent::AgentResponse(format!(
-                                    "\x00STREAM\x00{}\x001\x00", run_id
-                                )));
-                            }
-                        }
+                    eprintln!("[gateway] chat event: state={} runId={} text_len={}", state, run_id, text.len());
+
+                    if !text.is_empty() {
+                        let _ = tx.send(GatewayEvent::AgentResponse(format!(
+                            "\x00STREAM\x00{}\x00{}\x00{}",
+                            run_id,
+                            if done { "1" } else { "0" },
+                            text
+                        )));
+                    } else if done {
+                        // Final event with no text — flush buffer
+                        let _ = tx.send(GatewayEvent::AgentResponse(format!(
+                            "\x00STREAM\x00{}\x001\x00", run_id
+                        )));
                     }
                 }
             }
