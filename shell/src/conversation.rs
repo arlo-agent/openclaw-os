@@ -52,6 +52,7 @@ pub enum ConversationMessage {
 /// Includes a back button to return to ambient.
 pub fn view_conversation<'a>(
     messages: &'a [ChatMessage],
+    thinking: bool,
     palette: &OpenClawPalette,
 ) -> Element<'a, ConversationMessage> {
     let p = *palette;
@@ -114,6 +115,26 @@ pub fn view_conversation<'a>(
 
     let header = container(back_btn)
         .padding(Padding::from(theme::GRID));
+
+    // Thinking indicator
+    if thinking {
+        let dots = "Thinking...";
+        let thinking_bubble = container(
+            text(dots)
+                .size(theme::FONT_BODY)
+                .color(p.text_muted),
+        )
+        .padding(Padding::from(theme::GRID * 1.5))
+        .max_width(200)
+        .style(move |_theme: &_| glass_card::glass_container_with_palette(&p));
+
+        msg_views.push(
+            container(thinking_bubble)
+                .width(Length::Fill)
+                .align_x(Alignment::Start)
+                .into(),
+        );
+    }
 
     let messages_scroll = scrollable(
         column(msg_views)

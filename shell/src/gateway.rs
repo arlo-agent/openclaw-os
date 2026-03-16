@@ -519,17 +519,38 @@ fn handle_ws_message(v: &Value, tx: &mpsc::Sender<GatewayEvent>) {
             if event_name == "chat" {
                 if let Some(payload) = v.get("payload") {
                     let kind = payload.get("kind").and_then(|k| k.as_str()).unwrap_or("");
-                    if kind == "text" {
-                        let text = payload.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
-                        let done = payload.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
-                        let run_id = payload.get("runId").and_then(|r| r.as_str()).unwrap_or("unknown").to_string();
+                    let done = payload.get("done").and_then(|d| d.as_bool()).unwrap_or(false);
+                    let run_id = payload.get("runId").and_then(|r| r.as_str()).unwrap_or("unknown").to_string();
 
-                        let _ = tx.send(GatewayEvent::AgentResponse(format!(
-                            "\x00STREAM\x00{}\x00{}\x00{}",
-                            run_id,
-                            if done { "1" } else { "0" },
-                            text
-                        )));
+                    eprintln!("[gateway] chat event: kind={} done={} runId={}", kind, done, run_id);
+
+                    match kind {
+                        "text" => {
+                            let text = payload.get("text").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                            let _ = tx.send(GatewayEvent::AgentResponse(format!(
+                                "\x00STREAM\x00{}\x00{}\x00{}",
+                                run_id,
+                                if done { "1" } else { "0" },
+                                text
+                            )));
+                        }
+                        "status" | "thinking" | "tool-start" | "tool-output" => {
+                            // If done arrives on a non-text event, signal completion
+                            if done {
+                                let _ = tx.send(GatewayEvent::AgentResponse(format!(
+                                    "\x00STREAM\x00{}\x001\x00", run_id
+                                )));
+                            }
+                        }
+                        _ => {
+                            // Log unknown kinds for debugging
+                            eprintln!("[gateway] Unknown chat event kind: {}", kind);
+                            if done {
+                                let _ = tx.send(GatewayEvent::AgentResponse(format!(
+                                    "\x00STREAM\x00{}\x001\x00", run_id
+                                )));
+                            }
+                        }
                     }
                 }
             }

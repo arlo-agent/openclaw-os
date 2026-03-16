@@ -42,6 +42,7 @@ struct App {
     dock_input: String,
     connected: bool,
     agent_active: bool,
+    agent_thinking: bool,
     listening: bool,
     window_size: (f32, f32),
     theme_mode: ThemeMode,
@@ -95,6 +96,7 @@ impl Default for App {
             dock_input: String::new(),
             connected,
             agent_active: true,
+            agent_thinking: false,
             listening: false,
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
@@ -120,6 +122,7 @@ impl App {
 
             // Send to gateway
             self.gateway.send_message(&self.dock_input);
+            self.agent_thinking = true;
 
             self.dock_input.clear();
             self.view = AppView::Conversation;
@@ -131,8 +134,11 @@ impl App {
         for event in events {
             match event {
                 GatewayEvent::AgentResponse(text) => {
-                    let agent_msg = ChatMessage::new(false, text);
-                    self.chat_messages.push(agent_msg);
+                    self.agent_thinking = false;
+                    if !text.is_empty() {
+                        let agent_msg = ChatMessage::new(false, text);
+                        self.chat_messages.push(agent_msg);
+                    }
                 }
                 GatewayEvent::Notification {
                     channel,
@@ -239,7 +245,7 @@ impl App {
                 row![left, right_panel].height(Length::Fill).into()
             }
             AppView::Conversation => {
-                conversation::view_conversation(&self.chat_messages, &palette)
+                conversation::view_conversation(&self.chat_messages, self.agent_thinking, &palette)
                     .map(Message::Conversation)
             }
         };
