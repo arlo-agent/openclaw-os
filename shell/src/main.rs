@@ -4,7 +4,9 @@ mod conversation;
 mod device_identity;
 mod dock;
 mod gateway;
+mod ollama;
 mod theme;
+mod welcome;
 mod widgets;
 
 use cards::{Card, CardMessage, CardType};
@@ -13,8 +15,10 @@ use dock::DockMessage;
 use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
 use iced::{Element, Length, Padding, Size, Subscription, Theme};
+use ollama::{OllamaClient, OllamaEvent, OllamaStatus};
 use std::time::{Duration, Instant};
 use theme::{OpenClawPalette, ThemeMode};
+use welcome::{WelcomeMessage, WelcomeState, WizardStep};
 use widgets::particle_field::ParticleField;
 extern crate iced_fonts;
 
@@ -30,6 +34,7 @@ fn main() -> iced::Result {
 
 #[derive(Debug, Clone)]
 enum AppView {
+    Welcome,
     Ambient,
     Conversation,
 }
@@ -47,6 +52,8 @@ struct App {
     window_size: (f32, f32),
     theme_mode: ThemeMode,
     gateway: Gateway,
+    welcome: WelcomeState,
+    ollama_client: OllamaClient,
 }
 
 #[derive(Debug, Clone)]
@@ -55,6 +62,7 @@ enum Message {
     Card(CardMessage),
     Conversation(ConversationMessage),
     Dock(DockMessage),
+    Welcome(WelcomeMessage),
 }
 
 impl Default for App {
@@ -65,8 +73,11 @@ impl Default for App {
         let gw = Gateway::new(config);
         let connected = gw.connected;
 
+        // Check for --welcome or --onboard flag to launch the wizard
+        let show_welcome = args.iter().any(|a| a == "--welcome" || a == "--onboard");
+
         // Only show demo cards if NOT in mock mode (mock will generate its own)
-        let demo_cards = if is_mock {
+        let demo_cards = if is_mock || show_welcome {
             Vec::new()
         } else {
             vec![
@@ -88,8 +99,34 @@ impl Default for App {
             ]
         };
 
+        // Set up Ollama client and kick off status check
+        let ollama_client = OllamaClient::new();
+        if show_welcome {
+            ollama_client.check_status();
+        }
+
+        // Detect --auth-choice from CLI args
+        let mut welcome_state = WelcomeState::default();
+        if let Some(pos) = args.iter().position(|a| a == "--auth-choice") {
+            if let Some(choice) = args.get(pos + 1) {
+                match choice.to_lowercase().as_str() {
+                    "ollama" => welcome_state.auth_choice = welcome::AuthProvider::Ollama,
+                    "anthropic" => welcome_state.auth_choice = welcome::AuthProvider::Anthropic,
+                    "openai" => welcome_state.auth_choice = welcome::AuthProvider::OpenAI,
+                    "openrouter" => welcome_state.auth_choice = welcome::AuthProvider::OpenRouter,
+                    _ => {}
+                }
+            }
+        }
+
+        let initial_view = if show_welcome {
+            AppView::Welcome
+        } else {
+            AppView::Ambient
+        };
+
         Self {
-            view: AppView::Ambient,
+            view: initial_view,
             particles: ParticleField::new(),
             cards: demo_cards,
             chat_messages: Vec::new(),
@@ -101,6 +138,8 @@ impl Default for App {
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
             gateway: gw,
+            welcome: welcome_state,
+            ollama_client,
         }
     }
 }
@@ -160,6 +199,31 @@ impl App {
         }
     }
 
+    fn process_ollama_events(&mut self) {
+        let events = self.ollama_client.drain_events();
+        for event in events {
+            match event {
+                OllamaEvent::StatusChecked(status) => {
+                    let detected = matches!(status, OllamaStatus::Running(_));
+                    self.welcome.ollama_status = status;
+                    if detected {
+                        // Also fetch the model list
+                        self.ollama_client.list_models();
+                    }
+                }
+                OllamaEvent::ModelsListed(models) => {
+                    self.welcome.available_models =
+                        models.iter().map(|m| m.display_name()).collect();
+                    // Auto-select first model if none selected
+                    if self.welcome.selected_model.is_none() && !models.is_empty() {
+                        self.welcome.selected_model = Some(models[0].name.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn update(&mut self, message: Message) {
         match message {
             Message::Tick(_now) => {
@@ -170,6 +234,10 @@ impl App {
                 // Gateway tick + process events
                 self.gateway.tick();
                 self.process_gateway_events();
+                // Ollama tick (during welcome wizard)
+                if matches!(self.view, AppView::Welcome) {
+                    self.process_ollama_events();
+                }
             }
             Message::Card(CardMessage::Dismiss(i)) => {
                 if i < self.cards.len() {
@@ -185,6 +253,22 @@ impl App {
                     let _ = open::that(url.as_str());
                 }
             },
+            Message::Welcome(welcome_msg) => {
+                // When entering the OllamaSetup step, trigger a status check
+                let was_ollama_step = matches!(self.welcome.step, WizardStep::OllamaSetup);
+                let finished = welcome::update_welcome(&mut self.welcome, welcome_msg);
+                let is_ollama_step = matches!(self.welcome.step, WizardStep::OllamaSetup);
+
+                if !was_ollama_step && is_ollama_step {
+                    self.ollama_client.check_status();
+                }
+
+                if finished {
+                    // Wizard complete — transition to ambient view
+                    // TODO: write config files based on welcome state
+                    self.view = AppView::Ambient;
+                }
+            }
             Message::Dock(dock_msg) => match dock_msg {
                 DockMessage::ToggleVoice => {
                     self.listening = !self.listening;
@@ -220,6 +304,10 @@ impl App {
             .map(|_: ()| Message::Tick(Instant::now()));
 
         let main_content: Element<Message> = match &self.view {
+            AppView::Welcome => {
+                welcome::view_welcome(&self.welcome, &palette)
+                    .map(Message::Welcome)
+            }
             AppView::Ambient => {
                 let clock =
                     ambient::view_clock(&palette).map(|_: ()| Message::Tick(Instant::now()));
@@ -249,17 +337,27 @@ impl App {
             }
         };
 
-        let dock_view =
-            dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode)
-                .map(Message::Dock);
+        let show_dock = !matches!(self.view, AppView::Welcome);
 
-        let layout = column![
-            container(main_content)
-                .width(Length::Fill)
-                .height(Length::Fill),
-            dock_view,
-        ]
-        .height(Length::Fill);
+        let layout = if show_dock {
+            let dock_view =
+                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode)
+                    .map(Message::Dock);
+            column![
+                container(main_content)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+                dock_view,
+            ]
+            .height(Length::Fill)
+        } else {
+            column![
+                container(main_content)
+                    .width(Length::Fill)
+                    .height(Length::Fill),
+            ]
+            .height(Length::Fill)
+        };
 
         stack![bg, particles, layout]
             .width(Length::Fill)
