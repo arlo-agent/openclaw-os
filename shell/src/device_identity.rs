@@ -26,6 +26,8 @@ pub struct DeviceIdentityFile {
 
 pub struct DeviceIdentity {
     pub device_id: String,
+    pub public_key_pem: String,
+    pub private_key_pem: String,
     signing_key: SigningKey,
     raw_public_key: [u8; 32],
 }
@@ -59,6 +61,22 @@ impl DeviceIdentity {
 
         Ok(Self {
             device_id: file.device_id,
+            public_key_pem: file.public_key_pem,
+            private_key_pem: file.private_key_pem,
+            signing_key,
+            raw_public_key,
+        })
+    }
+
+    /// Reconstruct from PEM strings (used by background thread).
+    pub fn from_pems(device_id: &str, pub_pem: &str, priv_pem: &str) -> Result<Self, String> {
+        let signing_key = SigningKey::from_pkcs8_pem(priv_pem)
+            .map_err(|e| format!("Failed to decode private key: {}", e))?;
+        let raw_public_key = signing_key.verifying_key().to_bytes();
+        Ok(Self {
+            device_id: device_id.to_string(),
+            public_key_pem: pub_pem.to_string(),
+            private_key_pem: priv_pem.to_string(),
             signing_key,
             raw_public_key,
         })
@@ -105,6 +123,8 @@ impl DeviceIdentity {
 
         Ok(Self {
             device_id,
+            public_key_pem: file.public_key_pem,
+            private_key_pem: file.private_key_pem,
             signing_key,
             raw_public_key,
         })
