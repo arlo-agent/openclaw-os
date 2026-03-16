@@ -296,7 +296,11 @@ pub fn write_wizard_config(state: &WelcomeState) {
             providers[provider_key] = serde_json::json!({
                 "baseUrl": "https://openrouter.ai/api/v1",
                 "auth": "api-key",
-                "api": "openai-completions"
+                "api": "openai-completions",
+                "models": [{
+                    "id": "openrouter/auto",
+                    "name": "Auto (best available)"
+                }]
             });
         }
     }
