@@ -181,8 +181,8 @@ impl canvas::Program<()> for ParticleField {
                 let peak_alpha = if is_dark {
                     0.10 * (0.75 + breath * 0.25)
                 } else {
-                    // Light mode needs much higher alpha — colors fight a white bg
-                    0.85 * (0.75 + breath * 0.25)
+                    // Light mode needs aggressive alpha — colors fight a white bg
+                    1.6 * (0.75 + breath * 0.25)
                 };
 
                 // Draw rings from outside in
@@ -208,7 +208,7 @@ impl canvas::Program<()> for ParticleField {
             // === Soft particles ===
             for p in &self.particles {
                 let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
-                let base_alpha = if is_dark { 0.12 } else { 0.5 };
+                let base_alpha = if is_dark { 0.12 } else { 0.8 };
                 let alpha = base_alpha * (0.5 + pulse);
                 let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
