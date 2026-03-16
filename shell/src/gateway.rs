@@ -179,10 +179,10 @@ impl Gateway {
                 "minProtocol": 3,
                 "maxProtocol": 3,
                 "client": {
-                    "id": "webchat-ui",
+                    "id": "cli",
                     "version": "0.1.0",
                     "platform": "linux",
-                    "mode": "webchat"
+                    "mode": "cli"
                 },
                 "role": "operator",
                 "scopes": ["operator.read", "operator.write"],
