@@ -40,7 +40,8 @@ in
     environment = {
       WLR_LIBINPUT_NO_DEVICES = "1";
       XDG_RUNTIME_DIR = "/run/user/1000";
-      WLR_RENDERER = "vulkan";
+      # Use pixman (software) renderer as fallback — vulkan may not be available
+      WLR_RENDERER = "pixman";
     };
   };
 

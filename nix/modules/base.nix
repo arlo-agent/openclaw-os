@@ -48,6 +48,25 @@
     # No password — device boots directly into agent
   };
 
+  # Admin user for maintenance/debugging (TTY + SSH)
+  users.users.admin = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "networkmanager" "video" ];
+    initialPassword = "openclaw";  # Change on first login!
+  };
+
+  # Allow admin to sudo
+  security.sudo.wheelNeedsPassword = true;
+
+  # SSH for remote debugging
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = true;  # For initial setup; switch to keys later
+      PermitRootLogin = "no";
+    };
+  };
+
   # Auto-login to openclaw user
   services.getty.autologinUser = "openclaw";
 
@@ -73,7 +92,7 @@
   # Firewall — locked down
   networking.firewall = {
     enable = true;
-    allowedTCPPorts = []; # Nothing exposed by default
+    allowedTCPPorts = [ 22 ]; # SSH for debugging
   };
 
   # Automatic garbage collection
