@@ -30,8 +30,8 @@ pub struct Notification {
 impl Notification {
     pub fn new(message_index: usize, content: &str) -> Self {
         // Truncate to ~80 chars for the preview
-        let preview = if content.len() > 80 {
-            format!("{}...", &content[..77])
+        let preview = if content.len() > 40 {
+            format!("{}...", &content[..37])
         } else {
             content.to_string()
         };
@@ -220,38 +220,36 @@ pub fn view_toast(
         }
     };
 
-    let content = button(
-        container(
+    let toast_card = container(
+        button(
             row![
-                bicon(Bootstrap::ChatLeftTextFill, 13.0, Color::from_rgba(
+                bicon(Bootstrap::ChatLeftTextFill, 11.0, Color::from_rgba(
                     p.coral_bright.r, p.coral_bright.g, p.coral_bright.b, opacity,
                 )),
-                Space::with_width(8),
+                Space::with_width(6),
                 text(preview)
                     .size(theme::FONT_CAPTION)
                     .color(Color::from_rgba(
                         p.text_primary.r, p.text_primary.g, p.text_primary.b, opacity,
                     )),
             ]
-            .align_y(Alignment::Center)
-            .width(Length::Fill),
+            .align_y(Alignment::Center),
         )
-        .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
-        .max_width(220)
-        .style(move |_: &_| card_style),
+        .on_press(NotificationMessage::ClickNotification(msg_idx))
+        .style(button::text)
+        .padding(Padding::from([theme::GRID * 0.8, theme::GRID * 1.2])),
     )
-    .on_press(NotificationMessage::ClickNotification(msg_idx))
-    .style(button::text);
+    .style(move |_: &_| card_style);
 
     container(
         row![
             Space::with_width(Length::Fill),
-            content,
+            toast_card,
         ]
         .width(Length::Fill),
     )
     .width(Length::Fill)
-    .padding(Padding::from([theme::GRID * 2.0, theme::GRID * 3.0]))
+    .padding(Padding::from([theme::GRID, theme::GRID * 2.0]))
     .into()
 }
 
