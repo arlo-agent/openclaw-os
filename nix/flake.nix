@@ -16,6 +16,7 @@
       nixosConfigurations.openclaw-x86 = nixpkgs.lib.nixosSystem {
         system = "x86_64-linux";
         modules = [
+          ./modules/hardware-x86.nix
           ./modules/base.nix
           ./modules/boot.nix
           ./modules/openclaw.nix
