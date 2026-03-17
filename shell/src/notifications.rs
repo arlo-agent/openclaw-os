@@ -243,11 +243,16 @@ pub fn view_toast(
     .on_press(NotificationMessage::ClickNotification(msg_idx))
     .style(button::text);
 
-    container(content)
-        .width(Length::Fill)
-        .align_x(Alignment::End)
-        .padding(Padding::from([theme::GRID * 2.0, theme::GRID * 3.0]))
-        .into()
+    container(
+        row![
+            Space::with_width(Length::Fill),
+            content,
+        ]
+        .width(Length::Fill),
+    )
+    .width(Length::Fill)
+    .padding(Padding::from([theme::GRID * 2.0, theme::GRID * 3.0]))
+    .into()
 }
 
 /// Notification panel dropdown — shows all recent notifications
@@ -363,15 +368,18 @@ pub fn view_panel(
     ];
 
     container(
-        container(panel_content)
-            .max_width(360)
-            .max_height(400)
-            .style(move |_: &_| card_style),
+        row![
+            Space::with_width(Length::Fill),
+            container(panel_content)
+                .max_width(360)
+                .max_height(400)
+                .style(move |_: &_| card_style),
+        ]
+        .width(Length::Fill),
     )
     .width(Length::Fill)
-    .align_x(Alignment::End)
     .padding(Padding {
-        top: theme::GRID * 5.0,
+        top: theme::GRID * 2.0,
         right: theme::GRID * 3.0,
         bottom: 0.0,
         left: 0.0,
