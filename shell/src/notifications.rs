@@ -223,12 +223,12 @@ pub fn view_toast(
     let content = button(
         container(
             row![
-                bicon(Bootstrap::ChatLeftTextFill, 16.0, Color::from_rgba(
+                bicon(Bootstrap::ChatLeftTextFill, 13.0, Color::from_rgba(
                     p.coral_bright.r, p.coral_bright.g, p.coral_bright.b, opacity,
                 )),
-                Space::with_width(10),
+                Space::with_width(8),
                 text(preview)
-                    .size(theme::FONT_BODY)
+                    .size(theme::FONT_CAPTION)
                     .color(Color::from_rgba(
                         p.text_primary.r, p.text_primary.g, p.text_primary.b, opacity,
                     )),
@@ -236,8 +236,8 @@ pub fn view_toast(
             .align_y(Alignment::Center)
             .width(Length::Fill),
         )
-        .padding(Padding::from([theme::GRID * 1.5, theme::GRID * 2.0]))
-        .max_width(400)
+        .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
+        .max_width(320)
         .style(move |_: &_| card_style),
     )
     .on_press(NotificationMessage::ClickNotification(msg_idx))

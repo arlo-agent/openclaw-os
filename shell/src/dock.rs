@@ -27,11 +27,11 @@ pub fn view_dock<'a>(
     listening: bool,
     palette: &OpenClawPalette,
     _theme_mode: crate::theme::ThemeMode,
-    focused: bool,
+    _focused: bool,
 ) -> Element<'a, DockMessage> {
     let p = *palette;
     let has_text = !input_value.is_empty();
-    let is_active = focused || has_text;
+    let is_active = has_text;
 
     // Mic button
     let mic_icon = if listening {
