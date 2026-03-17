@@ -5,6 +5,9 @@
 use crate::notifications::{self, NotificationMessage, NotificationState};
 use crate::theme::{self, OpenClawPalette, ThemeMode};
 use iced::widget::{button, container, image, row, text, Space};
+
+// Embed the logo at compile time so it works regardless of install path
+static LOGO_BYTES: &[u8] = include_bytes!("../../assets/logo-32.png");
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 
@@ -74,13 +77,11 @@ pub fn view_statusbar(
 
     // === Left section: Logo + status dots ===
 
-    // Logo
-    let logo = image(format!(
-        "{}/repos/openclaw-os/assets/logo-32.png",
-        std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())
-    ))
-    .width(LOGO_SIZE)
-    .height(LOGO_SIZE);
+    // Logo (embedded at compile time)
+    let logo_handle = image::Handle::from_bytes(LOGO_BYTES);
+    let logo = image(logo_handle)
+        .width(LOGO_SIZE)
+        .height(LOGO_SIZE);
 
     // Connection status
     let conn_color = if connected {
