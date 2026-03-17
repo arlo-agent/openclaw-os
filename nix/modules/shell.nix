@@ -1,27 +1,45 @@
 # Shell UI module — the visual experience
 #
-# Uses NixOS's built-in services.cage module which handles:
-# - TTY allocation and getty conflict
-# - PAM session (creates XDG_RUNTIME_DIR via pam_systemd)
-# - Plymouth handoff
-# - systemd.defaultUnit = graphical.target
-# - Proper service dependencies and ordering
+# Uses Sway compositor with greetd auto-login, replacing the
+# previous Cage kiosk setup. Sway allows multiple windows
+# (terminal, browser, shell) to coexist.
 
 { config, pkgs, lib, ... }:
 
 let
   openclaw-shell = pkgs.callPackage ../packages/shell.nix {};
+
+  # Sway configuration — loaded from assets
+  swayConfig = pkgs.writeText "sway-config" (builtins.readFile ../../assets/sway/config);
 in
 {
-  # Use the built-in NixOS cage kiosk module
-  services.cage = {
+  # Sway compositor
+  programs.sway = {
     enable = true;
-    user = "openclaw";
-    program = "${openclaw-shell}/bin/openclaw-shell";
-    environment = {
-      WLR_LIBINPUT_NO_DEVICES = "1";
+    wrapperFeatures.gtk = true;
+    extraPackages = with pkgs; [
+      swaylock
+      swayidle
+      wl-clipboard    # CRITICAL: enables clipboard copy/paste
+      wlr-randr
+      foot            # Terminal emulator
+      chromium        # Web browser
+    ];
+  };
+
+  # Greetd auto-login — replaces Cage's TTY1 session
+  services.greetd = {
+    enable = true;
+    settings = {
+      default_session = {
+        command = "${pkgs.sway}/bin/sway --config ${swayConfig}";
+        user = "openclaw";
+      };
     };
   };
+
+  # Polkit is required for Sway seat management
+  security.polkit.enable = true;
 
   # GPU drivers
   hardware.graphics = {
@@ -52,11 +70,11 @@ in
   # Ensure the shell binary and display tools are available
   environment.systemPackages = [
     pkgs.wlr-randr     # Display configuration
-    openclaw-shell     # The shell UI binary
+    openclaw-shell      # The shell UI binary
   ];
 
-  # Make sure openclaw-gateway starts before the shell
-  systemd.services."cage-tty1" = {
+  # Make sure openclaw-gateway starts before the greeter session
+  systemd.services.greetd = {
     after = [ "openclaw-gateway.service" ];
     wants = [ "openclaw-gateway.service" ];
   };
