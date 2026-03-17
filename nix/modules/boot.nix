@@ -70,24 +70,22 @@ in
       # We override the os-release to brand them as OpenClaw OS
     };
 
-    # DEBUG: verbose boot — show all kernel messages, no Plymouth
-    # Re-enable quiet boot + Plymouth once the shell UI is working
-    # consoleLogLevel = 0;
-    # initrd.verbose = false;
+    # Quiet boot — no kernel messages, straight to Plymouth
+    consoleLogLevel = 0;
+    initrd.verbose = false;
     kernelParams = [
-      # "quiet"
-      # "splash"
-      # "udev.log_level=3"
-      # "vt.global_cursor_default=0"
+      "quiet"
+      "splash"
+      "udev.log_level=3"
+      "vt.global_cursor_default=0"  # Hide text cursor
     ];
 
-    # Plymouth disabled for debugging
-    plymouth.enable = false;
-    # plymouth = {
-    #   enable = true;
-    #   theme = "openclaw";
-    #   themePackages = [ plymouthTheme ];
-    # };
+    # Plymouth splash screen (shows between GRUB and shell UI)
+    plymouth = {
+      enable = true;
+      theme = "openclaw";
+      themePackages = [ plymouthTheme ];
+    };
   };
 
   # Brand the OS identity — this changes what shows in GRUB entries
