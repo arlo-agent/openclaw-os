@@ -84,8 +84,12 @@ impl Default for App {
         let gw = Gateway::new(config);
         let connected = gw.connected;
 
-        // Check for --welcome or --onboard flag to launch the wizard
-        let show_welcome = args.iter().any(|a| a == "--welcome" || a == "--onboard");
+        // Show welcome wizard if --welcome/--onboard flag is set,
+        // OR if no OpenClaw config exists yet (first boot)
+        let force_welcome = args.iter().any(|a| a == "--welcome" || a == "--onboard");
+        let has_config = std::path::Path::new("/home/openclaw/.config/openclaw/openclaw.json").exists()
+            || std::path::Path::new("/etc/openclaw/openclaw.json").exists();
+        let show_welcome = force_welcome || !has_config;
 
         // Only show demo cards if NOT in mock mode (mock will generate its own)
         let demo_cards = if is_mock || show_welcome {
