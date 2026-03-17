@@ -348,7 +348,7 @@ impl Gateway {
                         let _ = event_tx_clone.send(GatewayEvent::ConnectionStatus(false));
                         break;
                     }
-                    Ok(WsMessage::Ping(data)) => {
+                    Ok(WsMessage::Ping(_data)) => {
                         // tungstenite from_raw_socket doesn't auto-pong — we need to respond
                         // But we can't write from the reader socket (it's split).
                         // Send a command to the writer thread instead.

@@ -2,7 +2,7 @@
 //!
 //! Layout: [logo] [connection dot] [agent dot] ... [theme toggle] [bell+badge]
 
-use crate::notifications::{self, NotificationMessage, NotificationState};
+use crate::notifications::{NotificationMessage, NotificationState};
 use crate::theme::{self, OpenClawPalette, ThemeMode};
 use iced::widget::{button, container, image, row, text, Space};
 

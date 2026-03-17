@@ -1,3 +1,5 @@
+#![allow(dead_code, unused_imports, unused_variables)]
+
 mod ambient;
 mod cards;
 mod conversation;
@@ -17,7 +19,7 @@ use conversation::{ChatMessage, ConversationMessage};
 use dock::DockMessage;
 use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
-use iced::{Alignment, Element, Length, Padding, Size, Subscription, Theme};
+use iced::{Element, Length, Padding, Size, Subscription, Theme};
 use notifications::{NotificationMessage, NotificationState};
 use statusbar::StatusBarMessage;
 use ollama::{OllamaClient, OllamaEvent, OllamaStatus};

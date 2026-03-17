@@ -71,7 +71,7 @@ pub fn view_dock<'a>(
 
     let input = input.style(move |_theme, status| {
             // Borderless input that blends with dock background
-            let focused = matches!(status, text_input::Status::Focused);
+            let _focused = matches!(status, text_input::Status::Focused);
             text_input::Style {
                 background: iced::Background::Color(Color::TRANSPARENT),
                 border: iced::Border {
