@@ -56,6 +56,9 @@
   # Allow admin to sudo
   security.sudo.wheelNeedsPassword = true;
 
+  # SPICE guest agent (clipboard sharing, display resize in UTM/QEMU)
+  services.spice-vdagentd.enable = true;
+
   # SSH for remote debugging
   services.openssh = {
     enable = true;
