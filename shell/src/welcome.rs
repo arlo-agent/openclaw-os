@@ -7,10 +7,12 @@ use crate::messaging_setup::{MessagingMessage, MessagingState};
 use crate::ollama::{OllamaClient, OllamaStatus};
 use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
 use crate::widgets::glass_card;
-use iced::widget::{button, column, container, row, scrollable, text, text_input, Space};
+use iced::widget::{button, column, container, image, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 use rand::Rng;
+
+static LOGO_BYTES: &[u8] = include_bytes!("../../assets/logo-180.png");
 
 // ── Data types ──────────────────────────────────────────────────────────
 
@@ -819,9 +821,16 @@ fn view_step_welcome(p: &OpenClawPalette) -> Element<'static, WelcomeMessage> {
     column![
         Space::with_height(theme::GRID * 3.0),
         container(
-            text("OpenClaw")
-                .size(theme::FONT_DISPLAY)
-                .color(p.coral_bright),
+            row![
+                image(image::Handle::from_bytes(LOGO_BYTES))
+                    .width(48)
+                    .height(48),
+                Space::with_width(14),
+                text("OpenClaw")
+                    .size(theme::FONT_DISPLAY)
+                    .color(p.coral_bright),
+            ]
+            .align_y(Alignment::Center),
         )
         .center_x(Length::Fill),
         Space::with_height(theme::GRID * 2.0),
