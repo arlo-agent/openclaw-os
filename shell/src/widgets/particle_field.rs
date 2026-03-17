@@ -192,8 +192,7 @@ impl canvas::Program<()> for ParticleField {
                 let peak_alpha = if is_dark {
                     0.10 * (0.75 + breath * 0.25)
                 } else {
-                    // Light mode: needs higher alpha since colors compete with white bg
-                    0.25 * (0.75 + breath * 0.25)
+                    0.75 * (0.75 + breath * 0.25)
                 };
 
                 // Draw rings from outside in
@@ -219,23 +218,34 @@ impl canvas::Program<()> for ParticleField {
             // === Soft particles ===
             for p in &self.particles {
                 let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
-                let base_alpha = if is_dark { 0.12 } else { 0.35 };
+                let base_alpha = if is_dark { 0.12 } else { 1.0 };
                 let alpha = base_alpha * (0.5 + pulse);
                 let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
-                // 3-layer glow for smoothness
-                let glow_outer = Path::circle(Point::new(p.x, p.y), p.size * 5.0);
-                frame.fill(&glow_outer, self.blend_color(ct, alpha * 0.03, &palette));
+                if is_dark {
+                    // Dark mode: subtle multi-layer glow
+                    let glow_outer = Path::circle(Point::new(p.x, p.y), p.size * 5.0);
+                    frame.fill(&glow_outer, self.blend_color(ct, alpha * 0.03, &palette));
 
-                let glow_mid = Path::circle(Point::new(p.x, p.y), p.size * 2.5);
-                frame.fill(&glow_mid, self.blend_color(ct, alpha * 0.08, &palette));
+                    let glow_mid = Path::circle(Point::new(p.x, p.y), p.size * 2.5);
+                    frame.fill(&glow_mid, self.blend_color(ct, alpha * 0.08, &palette));
 
-                let glow_inner = Path::circle(Point::new(p.x, p.y), p.size * 1.5);
-                frame.fill(&glow_inner, self.blend_color(ct, alpha * 0.2, &palette));
+                    let glow_inner = Path::circle(Point::new(p.x, p.y), p.size * 1.5);
+                    frame.fill(&glow_inner, self.blend_color(ct, alpha * 0.2, &palette));
 
-                // Bright core
-                let core = Path::circle(Point::new(p.x, p.y), p.size * 0.7);
-                frame.fill(&core, self.blend_color(ct, alpha * 0.6, &palette));
+                    let core = Path::circle(Point::new(p.x, p.y), p.size * 0.7);
+                    frame.fill(&core, self.blend_color(ct, alpha * 0.6, &palette));
+                } else {
+                    // Light mode: skip dark outer glow, use vivid opaque dots
+                    let glow_mid = Path::circle(Point::new(p.x, p.y), p.size * 2.0);
+                    frame.fill(&glow_mid, self.blend_color(ct, alpha * 0.15, &palette));
+
+                    let glow_inner = Path::circle(Point::new(p.x, p.y), p.size * 1.2);
+                    frame.fill(&glow_inner, self.blend_color(ct, alpha * 0.35, &palette));
+
+                    let core = Path::circle(Point::new(p.x, p.y), p.size * 0.7);
+                    frame.fill(&core, self.blend_color(ct, alpha * 0.7, &palette));
+                }
             }
         });
 
