@@ -370,7 +370,7 @@ pub fn view_panel(
         row![
             Space::with_width(Length::Fill),
             container(panel_content)
-                .max_width(240)
+                .width(240)
                 .max_height(300)
                 .style(move |_: &_| card_style),
         ]
