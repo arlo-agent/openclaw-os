@@ -30,8 +30,9 @@ pub struct Notification {
 impl Notification {
     pub fn new(message_index: usize, content: &str) -> Self {
         // Truncate to ~80 chars for the preview
-        let preview = if content.len() > 40 {
-            format!("{}...", &content[..37])
+        let preview = if content.chars().count() > 40 {
+            let truncated: String = content.chars().take(37).collect();
+            format!("{}...", truncated)
         } else {
             content.to_string()
         };
