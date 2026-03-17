@@ -52,6 +52,12 @@
         ];
       };
 
+      # Packages
+      packages = forAllSystems ({ pkgs }: {
+        openclaw-shell = pkgs.callPackage ./packages/shell.nix {};
+        default = pkgs.callPackage ./packages/shell.nix {};
+      });
+
       # Dev shells for building the shell UI
       devShells = forAllSystems ({ pkgs }: {
         default = pkgs.mkShell {

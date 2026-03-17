@@ -2,6 +2,9 @@
 
 { config, pkgs, lib, ... }:
 
+let
+  openclaw-shell = pkgs.callPackage ../packages/shell.nix {};
+in
 {
   # Minimal Wayland compositor (cage for now, custom later)
   # Cage runs a single application fullscreen — perfect for kiosk/shell
@@ -19,18 +22,13 @@
     after = [ "openclaw-gateway.service" "network.target" ];
     wants = [ "openclaw-gateway.service" ];
 
-    # Don't start if binary doesn't exist yet
-    unitConfig = {
-      ConditionPathExists = "/opt/openclaw-os/shell/openclaw-shell";
-    };
-
     serviceConfig = {
       Type = "simple";
       User = "openclaw";
       Group = "users";
 
-      # cage compositor running the shell app fullscreen
-      ExecStart = "${pkgs.cage}/bin/cage -s -- /opt/openclaw-os/shell/openclaw-shell";
+      # cage compositor running the Nix-built shell binary fullscreen
+      ExecStart = "${pkgs.cage}/bin/cage -s -- ${openclaw-shell}/bin/openclaw-shell";
 
       Restart = "on-failure";
       RestartSec = 5;
@@ -74,8 +72,9 @@
   };
 
   # Cursor theme (hidden most of the time, but needed for touch fallback)
-  environment.systemPackages = with pkgs; [
-    cage          # Wayland kiosk compositor
-    wlr-randr    # Display configuration
+  environment.systemPackages = [
+    pkgs.cage          # Wayland kiosk compositor
+    pkgs.wlr-randr     # Display configuration
+    openclaw-shell     # The shell UI binary
   ];
 }
