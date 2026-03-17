@@ -22,14 +22,22 @@ let
 
   # Plymouth theme — logo + coral orbital spinner
   plymouthTheme = pkgs.runCommand "openclaw-plymouth-theme" {} ''
-    mkdir -p $out/share/plymouth/themes/openclaw
-    cp ${../../assets/plymouth/openclaw.plymouth} $out/share/plymouth/themes/openclaw/
-    cp ${../../assets/plymouth/openclaw.script} $out/share/plymouth/themes/openclaw/
-    cp ${../../assets/plymouth/logo.png} $out/share/plymouth/themes/openclaw/
-    cp ${../../assets/plymouth/background.png} $out/share/plymouth/themes/openclaw/
+    themeDir=$out/share/plymouth/themes/openclaw
+    mkdir -p $themeDir
+
+    # Copy and patch the .plymouth file with correct store paths
+    sed \
+      -e "s|@@IMAGEDIR@@|$themeDir|g" \
+      -e "s|@@SCRIPTFILE@@|$themeDir/openclaw.script|g" \
+      ${../../assets/plymouth/openclaw.plymouth} > $themeDir/openclaw.plymouth
+
+    cp ${../../assets/plymouth/openclaw.script} $themeDir/
+    cp ${../../assets/plymouth/logo.png} $themeDir/
+    cp ${../../assets/plymouth/background.png} $themeDir/
+
     # Copy all spinner frames
     for f in ${../../assets/plymouth}/spinner-*.png; do
-      cp "$f" $out/share/plymouth/themes/openclaw/
+      cp "$f" $themeDir/
     done
   '';
 in
