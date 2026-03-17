@@ -58,6 +58,7 @@
 
   # SPICE guest agent (clipboard sharing, display resize in UTM/QEMU)
   services.spice-vdagentd.enable = true;
+  services.qemuGuest.enable = true;
 
   # SSH for remote debugging
   services.openssh = {
@@ -84,6 +85,9 @@
     # Audio tools
     alsa-utils
     pavucontrol
+
+    # SPICE/QEMU guest tools
+    spice-vdagent
 
     # System
     usbutils
