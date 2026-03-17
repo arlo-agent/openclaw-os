@@ -54,6 +54,7 @@ struct App {
     agent_active: bool,
     agent_thinking: bool,
     listening: bool,
+    dock_focused: bool,
     window_size: (f32, f32),
     theme_mode: ThemeMode,
     gateway: Gateway,
@@ -143,6 +144,7 @@ impl Default for App {
             agent_active: true,
             agent_thinking: false,
             listening: false,
+            dock_focused: false,
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
             gateway: gw,
@@ -381,11 +383,12 @@ impl App {
                     self.listening = !self.listening;
                 }
                 DockMessage::InputChanged(val) => {
+                    self.dock_focused = true;
                     self.dock_input = val;
                 }
                 DockMessage::Submit => {
                     self.send_message();
-                    // Mark all notifications as read when user sends a message
+                    self.dock_focused = false;
                     self.notifs.mark_all_read();
                 }
                 DockMessage::ToggleTheme => {
@@ -475,7 +478,7 @@ impl App {
 
         let layout = if show_dock {
             let dock_view =
-                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode)
+                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode, self.dock_focused)
                     .map(Message::Dock);
             column![
                 status_bar_view,
