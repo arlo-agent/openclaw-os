@@ -14,13 +14,14 @@ mod statusbar;
 mod theme;
 mod welcome;
 mod widgets;
+mod window_manager;
 
 use cards::{Card, CardMessage, CardType};
 use conversation::{ChatMessage, ConversationMessage};
 use dock::DockMessage;
 use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
-use iced::{Element, Length, Padding, Size, Subscription, Theme};
+use iced::{mouse, Element, Length, Padding, Size, Subscription, Theme};
 use notifications::{NotificationMessage, NotificationState};
 use statusbar::StatusBarMessage;
 use ollama::{OllamaClient, OllamaEvent, OllamaStatus};
@@ -28,6 +29,7 @@ use std::time::{Duration, Instant};
 use theme::{OpenClawPalette, ThemeMode};
 use welcome::{WelcomeMessage, WelcomeState, WizardStep};
 use widgets::particle_field::ParticleField;
+use window_manager::{WindowContent, WindowManager, WindowManagerMessage};
 extern crate iced_fonts;
 
 fn main() -> iced::Result {
@@ -65,6 +67,7 @@ struct App {
     ollama_client: OllamaClient,
     notifs: NotificationState,
     show_about: bool,
+    wm: WindowManager,
 }
 
 #[derive(Debug, Clone)]
@@ -77,6 +80,7 @@ enum Message {
     Notification(NotificationMessage),
     StatusBar(StatusBarMessage),
     About(about::AboutMessage),
+    WindowManager(WindowManagerMessage),
 }
 
 impl Default for App {
@@ -161,6 +165,7 @@ impl Default for App {
             ollama_client,
             notifs: NotificationState::default(),
             show_about: false,
+            wm: WindowManager::new(),
         }
     }
 }
@@ -364,7 +369,14 @@ impl App {
                 }
                 about::AboutMessage::OpenTerminal => {
                     self.show_about = false;
-                    // TODO: open terminal
+                    self.wm.open_window(
+                        "Terminal".to_string(),
+                        WindowContent::Terminal,
+                        100.0,
+                        80.0,
+                        700.0,
+                        450.0,
+                    );
                 }
             },
             Message::StatusBar(sb_msg) => match sb_msg {
@@ -400,6 +412,9 @@ impl App {
                     }
                 }
             },
+            Message::WindowManager(wm_msg) => {
+                self.wm.update(wm_msg);
+            }
             Message::Dock(dock_msg) => match dock_msg {
                 DockMessage::ToggleVoice => {
                     self.listening = !self.listening;
@@ -529,7 +544,8 @@ impl App {
             .width(Length::Fill)
             .height(Length::Fill);
 
-        if self.show_about {
+        // Layer: about modal
+        let with_about: Element<Message> = if self.show_about {
             let about_overlay = about::view_about(self.connected, self.agent_active, &palette)
                 .map(Message::About);
             stack![base, about_overlay]
@@ -538,10 +554,40 @@ impl App {
                 .into()
         } else {
             base.into()
+        };
+
+        // Layer: window manager overlay
+        if self.wm.has_windows() {
+            let wm_overlay = window_manager::view_windows(&self.wm, &palette)
+                .map(Message::WindowManager);
+            stack![with_about, wm_overlay]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            with_about
         }
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick(Instant::now()))
+        let tick = iced::time::every(Duration::from_millis(16)).map(|_| Message::Tick(Instant::now()));
+
+        if self.wm.has_windows() {
+            let mouse_events = iced::event::listen().map(|event| match event {
+                iced::Event::Mouse(mouse::Event::CursorMoved { position }) => {
+                    Message::WindowManager(WindowManagerMessage::MouseMoved(
+                        position.x,
+                        position.y,
+                    ))
+                }
+                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
+                    Message::WindowManager(WindowManagerMessage::MouseReleased)
+                }
+                _ => Message::Tick(Instant::now()),
+            });
+            Subscription::batch([tick, mouse_events])
+        } else {
+            tick
+        }
     }
 }
