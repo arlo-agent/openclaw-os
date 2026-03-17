@@ -1,46 +1,27 @@
 # Shell UI module — the visual experience
 #
-# Uses Sway compositor with greetd auto-login, replacing the
-# previous Cage kiosk setup. Sway allows multiple windows
-# (terminal, browser, shell) to coexist.
+# Uses NixOS's built-in services.cage module which handles:
+# - TTY allocation and getty conflict
+# - PAM session (creates XDG_RUNTIME_DIR via pam_systemd)
+# - Plymouth handoff
+# - systemd.defaultUnit = graphical.target
+# - Proper service dependencies and ordering
 
 { config, pkgs, lib, ... }:
 
 let
   openclaw-shell = pkgs.callPackage ../packages/shell.nix {};
-
-  # Sway configuration — loaded from assets
-  swayConfig = pkgs.writeText "sway-config" (builtins.readFile ../../assets/sway/config);
 in
 {
-  # Sway compositor
-  programs.sway = {
+  # Use the built-in NixOS cage kiosk module
+  services.cage = {
     enable = true;
-    wrapperFeatures.gtk = true;
-    extraPackages = with pkgs; [
-      swaylock
-      swayidle
-      wl-clipboard    # CRITICAL: enables clipboard copy/paste
-      wlr-randr
-      foot            # Terminal emulator
-      chromium        # Web browser
-      waybar          # Taskbar
-    ];
-  };
-
-  # Greetd auto-login — replaces Cage's TTY1 session
-  services.greetd = {
-    enable = true;
-    settings = {
-      default_session = {
-        command = "${pkgs.sway}/bin/sway --config ${swayConfig}";
-        user = "openclaw";
-      };
+    user = "openclaw";
+    program = "${openclaw-shell}/bin/openclaw-shell";
+    environment = {
+      WLR_LIBINPUT_NO_DEVICES = "1";
     };
   };
-
-  # Polkit is required for Sway seat management
-  security.polkit.enable = true;
 
   # GPU drivers
   hardware.graphics = {
@@ -71,19 +52,11 @@ in
   # Ensure the shell binary and display tools are available
   environment.systemPackages = [
     pkgs.wlr-randr     # Display configuration
-    pkgs.waybar         # Taskbar
-    openclaw-shell      # The shell UI binary
+    openclaw-shell     # The shell UI binary
   ];
 
-  # Install waybar config
-  environment.etc."openclaw/waybar/config.jsonc".source = ../../assets/waybar/config.jsonc;
-  environment.etc."openclaw/waybar/style.css".source = ../../assets/waybar/style.css;
-
-  # Install foot terminal config
-  environment.etc."xdg/foot/foot.ini".source = ../../assets/foot/foot.ini;
-
-  # Make sure openclaw-gateway starts before the greeter session
-  systemd.services.greetd = {
+  # Make sure openclaw-gateway starts before the shell
+  systemd.services."cage-tty1" = {
     after = [ "openclaw-gateway.service" ];
     wants = [ "openclaw-gateway.service" ];
   };
