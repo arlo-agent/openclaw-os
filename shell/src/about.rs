@@ -14,6 +14,7 @@ const DOT_SIZE: f32 = 8.0;
 pub enum AboutMessage {
     Close,
     OpenTerminal,
+    OpenBrowser,
 }
 
 fn bicon(i: Bootstrap, size: f32, color: Color) -> iced::widget::Text<'static> {
@@ -136,13 +137,37 @@ pub fn view_about(
     });
 
     // Open Terminal button
-    let terminal_btn = container(
-        button(
+    let terminal_btn = button(
+        container(
+            row![
+                bicon(Bootstrap::Terminal, 14.0, Color::WHITE),
+                Space::with_width(8),
+                text("Open Terminal")
+                    .size(theme::FONT_BODY)
+                    .color(Color::WHITE),
+            ]
+            .align_y(Alignment::Center),
+        )
+        .padding(Padding::from([theme::GRID * 1.2, theme::GRID * 2.5]))
+        .style(move |_: &_| container::Style {
+            background: Some(iced::Background::Color(p.coral_bright)),
+            border: iced::Border {
+                radius: BORDER_RADIUS.into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        }),
+    )
+    .on_press(AboutMessage::OpenTerminal)
+    .style(button::text);
+
+    // Open Browser button
+    let browser_btn = button(
             container(
                 row![
-                    bicon(Bootstrap::Terminal, 14.0, Color::WHITE),
+                    bicon(Bootstrap::Globe, 14.0, Color::WHITE),
                     Space::with_width(8),
-                    text("Open Terminal")
+                    text("Open Browser")
                         .size(theme::FONT_BODY)
                         .color(Color::WHITE),
                 ]
@@ -150,7 +175,7 @@ pub fn view_about(
             )
             .padding(Padding::from([theme::GRID * 1.2, theme::GRID * 2.5]))
             .style(move |_: &_| container::Style {
-                background: Some(iced::Background::Color(p.coral_bright)),
+                background: Some(iced::Background::Color(p.cyan_mid)),
                 border: iced::Border {
                     radius: BORDER_RADIUS.into(),
                     ..Default::default()
@@ -158,8 +183,16 @@ pub fn view_about(
                 ..Default::default()
             }),
         )
-        .on_press(AboutMessage::OpenTerminal)
-        .style(button::text),
+        .on_press(AboutMessage::OpenBrowser)
+        .style(button::text);
+
+    let action_buttons = container(
+        row![
+            terminal_btn,
+            Space::with_width(theme::GRID),
+            browser_btn,
+        ]
+        .align_y(Alignment::Center),
     )
     .center_x(Length::Fill);
 
@@ -179,7 +212,7 @@ pub fn view_about(
         Space::with_height(theme::GRID * 2.5),
         status_section,
         Space::with_height(theme::GRID * 2.5),
-        terminal_btn,
+        action_buttons,
         Space::with_height(theme::GRID * 2.0),
     ]
     .align_x(Alignment::Center)
