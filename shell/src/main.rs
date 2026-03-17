@@ -5,24 +5,22 @@ mod ambient;
 mod cards;
 mod conversation;
 mod device_identity;
-mod dock;
 mod gateway;
 mod messaging_setup;
 mod notifications;
 mod ollama;
-mod statusbar;
+mod spotlight;
 mod theme;
 mod welcome;
 mod widgets;
 
 use cards::{Card, CardMessage, CardType};
-use conversation::{ChatMessage, ConversationMessage};
-use dock::DockMessage;
+use conversation::ChatMessage;
 use gateway::{Gateway, GatewayConfig, GatewayEvent};
 use iced::widget::{column, container, row, stack, Space};
-use iced::{Element, Length, Padding, Size, Subscription, Theme};
+use iced::{Alignment, Element, Length, Padding, Size, Subscription, Theme};
 use notifications::{NotificationMessage, NotificationState};
-use statusbar::StatusBarMessage;
+use spotlight::{ChatOverlayMessage, LogoAction};
 use ollama::{OllamaClient, OllamaEvent, OllamaStatus};
 use std::time::{Duration, Instant};
 use theme::{OpenClawPalette, ThemeMode};
@@ -44,7 +42,6 @@ fn main() -> iced::Result {
 enum AppView {
     Welcome,
     Ambient,
-    Conversation,
 }
 
 struct App {
@@ -52,12 +49,11 @@ struct App {
     particles: ParticleField,
     cards: Vec<Card>,
     chat_messages: Vec<ChatMessage>,
-    dock_input: String,
+    chat_input: String,
+    show_chat: bool,
     connected: bool,
     agent_active: bool,
     agent_thinking: bool,
-    listening: bool,
-    dock_focused: bool,
     window_size: (f32, f32),
     theme_mode: ThemeMode,
     gateway: Gateway,
@@ -71,11 +67,10 @@ struct App {
 enum Message {
     Tick(Instant),
     Card(CardMessage),
-    Conversation(ConversationMessage),
-    Dock(DockMessage),
     Welcome(WelcomeMessage),
     Notification(NotificationMessage),
-    StatusBar(StatusBarMessage),
+    Chat(ChatOverlayMessage),
+    Logo(LogoAction),
     About(about::AboutMessage),
 }
 
@@ -87,14 +82,11 @@ impl Default for App {
         let gw = Gateway::new(config);
         let connected = gw.connected;
 
-        // Show welcome wizard if --welcome/--onboard flag is set,
-        // OR if no OpenClaw config exists yet (first boot)
         let force_welcome = args.iter().any(|a| a == "--welcome" || a == "--onboard");
         let has_config = std::path::Path::new("/home/openclaw/.config/openclaw/openclaw.json").exists()
             || std::path::Path::new("/etc/openclaw/openclaw.json").exists();
         let show_welcome = force_welcome || !has_config;
 
-        // Only show demo cards if NOT in mock mode (mock will generate its own)
         let demo_cards = if is_mock || show_welcome {
             Vec::new()
         } else {
@@ -117,13 +109,11 @@ impl Default for App {
             ]
         };
 
-        // Set up Ollama client and kick off status check
         let ollama_client = OllamaClient::new();
         if show_welcome {
             ollama_client.check_status();
         }
 
-        // Detect --auth-choice from CLI args
         let mut welcome_state = WelcomeState::default();
         if let Some(pos) = args.iter().position(|a| a == "--auth-choice") {
             if let Some(choice) = args.get(pos + 1) {
@@ -148,12 +138,11 @@ impl Default for App {
             particles: ParticleField::new(),
             cards: demo_cards,
             chat_messages: Vec::new(),
-            dock_input: String::new(),
+            chat_input: String::new(),
+            show_chat: false,
             connected,
             agent_active: true,
             agent_thinking: false,
-            listening: false,
-            dock_focused: false,
             window_size: (1280.0, 720.0),
             theme_mode: ThemeMode::default(),
             gateway: gw,
@@ -176,16 +165,14 @@ impl App {
     }
 
     fn send_message(&mut self) {
-        if !self.dock_input.is_empty() {
-            let user_msg = ChatMessage::new(true, self.dock_input.clone());
+        if !self.chat_input.is_empty() {
+            let user_msg = ChatMessage::new(true, self.chat_input.clone());
             self.chat_messages.push(user_msg);
 
-            // Send to gateway
-            self.gateway.send_message(&self.dock_input);
+            self.gateway.send_message(&self.chat_input);
             self.agent_thinking = true;
 
-            self.dock_input.clear();
-            self.view = AppView::Conversation;
+            self.chat_input.clear();
         }
     }
 
@@ -199,8 +186,7 @@ impl App {
                         let msg_index = self.chat_messages.len();
                         let agent_msg = ChatMessage::new(false, text.clone());
                         self.chat_messages.push(agent_msg);
-                        // Create notification if not currently viewing conversation
-                        if !matches!(self.view, AppView::Conversation) {
+                        if !self.show_chat {
                             self.notifs.push(msg_index, &text);
                         }
                     }
@@ -251,7 +237,6 @@ impl App {
                     self.welcome.pulling_model = false;
                     self.welcome.pull_complete = true;
                     self.welcome.pull_status = format!("{} downloaded!", model);
-                    // Refresh model list
                     self.ollama_client.list_models();
                 }
                 OllamaEvent::ModelPullError { error, .. } => {
@@ -272,12 +257,9 @@ impl App {
                 for card in &mut self.cards {
                     card.tick();
                 }
-                // Gateway tick + process events
                 self.gateway.tick();
                 self.process_gateway_events();
-                // Notification tick (toast timing)
                 self.notifs.tick();
-                // Ollama tick (during welcome wizard)
                 if matches!(self.view, AppView::Welcome) {
                     self.process_ollama_events();
                 }
@@ -287,17 +269,7 @@ impl App {
                     self.cards.remove(i);
                 }
             }
-            Message::Conversation(conv_msg) => match conv_msg {
-                ConversationMessage::Back => {
-                    self.view = AppView::Ambient;
-                }
-                ConversationMessage::LinkClicked(url) => {
-                    // Open URL in default browser
-                    let _ = open::that(url.as_str());
-                }
-            },
             Message::Welcome(welcome_msg) => {
-                // Check if this is a PullModel request before update consumes it
                 let pull_request = if let WelcomeMessage::PullModel(ref model) = welcome_msg {
                     Some(model.clone())
                 } else {
@@ -308,7 +280,6 @@ impl App {
                 let finished = welcome::update_welcome(&mut self.welcome, welcome_msg);
                 let is_ollama_step = matches!(self.welcome.step, WizardStep::OllamaSetup);
 
-                // Trigger model pull if requested
                 if let Some(model) = pull_request {
                     self.ollama_client.pull_model(&model);
                 }
@@ -318,10 +289,7 @@ impl App {
                 }
 
                 if finished {
-                    // Write config files, start gateway, get the token
                     if let Some(token) = welcome::write_wizard_config(&self.welcome) {
-                        // Reconnect using the same host/port from original config,
-                        // but with the new token
                         let new_config = GatewayConfig {
                             mock: false,
                             host: self.gateway.config.host.clone(),
@@ -338,17 +306,14 @@ impl App {
                     self.notifs.panel_open = !self.notifs.panel_open;
                 }
                 NotificationMessage::ClickNotification(msg_index) => {
-                    // Mark as read, close panel, navigate to conversation
-                    // Find the notification with this message_index and mark it read
                     if let Some(idx) = self.notifs.notifications.iter().position(|n| n.message_index == msg_index) {
                         self.notifs.mark_read(idx);
                     }
                     self.notifs.panel_open = false;
-                    self.view = AppView::Conversation;
-                    // TODO: scroll to msg_index in conversation view
+                    // Open chat overlay to show the conversation
+                    self.show_chat = true;
                 }
                 NotificationMessage::DismissToast => {
-                    // Mark the latest toast as read
                     if let Some(idx) = self.notifs.notifications.iter().rposition(|n| n.toast_visible()) {
                         self.notifs.mark_read(idx);
                     }
@@ -356,6 +321,26 @@ impl App {
                 NotificationMessage::MarkAllRead => {
                     self.notifs.mark_all_read();
                     self.notifs.panel_open = false;
+                }
+            },
+            Message::Chat(chat_msg) => match chat_msg {
+                ChatOverlayMessage::Toggle => {
+                    self.show_chat = !self.show_chat;
+                }
+                ChatOverlayMessage::InputChanged(val) => {
+                    self.chat_input = val;
+                }
+                ChatOverlayMessage::Submit => {
+                    self.send_message();
+                    self.notifs.mark_all_read();
+                }
+                ChatOverlayMessage::LinkClicked(url) => {
+                    let _ = open::that(url.as_str());
+                }
+            },
+            Message::Logo(logo_msg) => match logo_msg {
+                LogoAction::ShowAbout => {
+                    self.show_about = true;
                 }
             },
             Message::About(about_msg) => match about_msg {
@@ -369,57 +354,6 @@ impl App {
                 about::AboutMessage::OpenBrowser => {
                     self.show_about = false;
                     let _ = std::process::Command::new("chromium").spawn();
-                }
-            },
-            Message::StatusBar(sb_msg) => match sb_msg {
-                StatusBarMessage::ShowAbout => {
-                    self.show_about = true;
-                }
-                StatusBarMessage::ToggleTheme => {
-                    self.theme_mode = self.theme_mode.toggle();
-                    self.particles.set_theme_mode(self.theme_mode);
-                }
-                StatusBarMessage::Notification(notif_msg) => {
-                    // Delegate to notification handler
-                    match notif_msg {
-                        NotificationMessage::TogglePanel => {
-                            self.notifs.panel_open = !self.notifs.panel_open;
-                        }
-                        NotificationMessage::ClickNotification(msg_index) => {
-                            if let Some(idx) = self.notifs.notifications.iter().position(|n| n.message_index == msg_index) {
-                                self.notifs.mark_read(idx);
-                            }
-                            self.notifs.panel_open = false;
-                            self.view = AppView::Conversation;
-                        }
-                        NotificationMessage::DismissToast => {
-                            if let Some(idx) = self.notifs.notifications.iter().rposition(|n| n.toast_visible()) {
-                                self.notifs.mark_read(idx);
-                            }
-                        }
-                        NotificationMessage::MarkAllRead => {
-                            self.notifs.mark_all_read();
-                            self.notifs.panel_open = false;
-                        }
-                    }
-                }
-            },
-            Message::Dock(dock_msg) => match dock_msg {
-                DockMessage::ToggleVoice => {
-                    self.listening = !self.listening;
-                }
-                DockMessage::InputChanged(val) => {
-                    self.dock_focused = true;
-                    self.dock_input = val;
-                }
-                DockMessage::Submit => {
-                    self.send_message();
-                    self.dock_focused = false;
-                    self.notifs.mark_all_read();
-                }
-                DockMessage::ToggleTheme => {
-                    self.theme_mode = self.theme_mode.toggle();
-                    self.particles.set_theme_mode(self.theme_mode);
                 }
             },
         }
@@ -440,22 +374,6 @@ impl App {
             .particles
             .view()
             .map(|_: ()| Message::Tick(Instant::now()));
-
-        // Global status bar (visible on all screens except welcome wizard)
-        let show_statusbar = !matches!(self.view, AppView::Welcome);
-
-        let status_bar_view: Element<Message> = if show_statusbar {
-            statusbar::view_statusbar(
-                self.connected,
-                self.agent_active,
-                self.theme_mode,
-                &self.notifs,
-                &palette,
-            )
-            .map(Message::StatusBar)
-        } else {
-            Space::new(0, 0).into()
-        };
 
         let main_content: Element<Message> = match &self.view {
             AppView::Welcome => {
@@ -481,68 +399,75 @@ impl App {
                     .height(Length::Fill)
                     .into();
 
-                // Notification overlay (full width, right-aligned)
+                // Logo button (top-left) + FAB (bottom-right) overlay
+                let logo_btn = spotlight::view_logo_button(&palette).map(Message::Logo);
+                let fab = spotlight::view_fab(&palette).map(Message::Chat);
+
+                let with_buttons: Element<Message> = stack![base_layout, logo_btn, fab]
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into();
+
+                // Notification overlay
                 if self.notifs.panel_open {
                     let panel = notifications::view_panel(&self.notifs, &palette)
                         .map(Message::Notification);
-                    stack![base_layout, panel]
+                    stack![with_buttons, panel]
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .into()
                 } else if let Some(toast) = self.notifs.active_toast() {
                     let toast_view = notifications::view_toast(toast, &palette)
                         .map(Message::Notification);
-                    stack![base_layout, toast_view]
+                    stack![with_buttons, toast_view]
                         .width(Length::Fill)
                         .height(Length::Fill)
                         .into()
                 } else {
-                    base_layout
+                    with_buttons
                 }
             }
-            AppView::Conversation => {
-                conversation::view_conversation(&self.chat_messages, self.agent_thinking, &palette)
-                    .map(Message::Conversation)
-            }
         };
 
-        let show_dock = !matches!(self.view, AppView::Welcome);
-
-        let layout = if show_dock {
-            let dock_view =
-                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode, self.dock_focused, self.connected)
-                    .map(Message::Dock);
-            column![
-                status_bar_view,
-                container(main_content)
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-                dock_view,
-            ]
-            .height(Length::Fill)
-        } else {
-            column![
-                container(main_content)
-                    .width(Length::Fill)
-                    .height(Length::Fill),
-            ]
-            .height(Length::Fill)
-        };
+        let layout = column![
+            container(main_content)
+                .width(Length::Fill)
+                .height(Length::Fill),
+        ]
+        .height(Length::Fill);
 
         let base = stack![bg, particles, layout]
             .width(Length::Fill)
             .height(Length::Fill);
 
-        // Layer: about modal
-        if self.show_about {
-            let about_overlay = about::view_about(self.connected, self.agent_active, &palette)
-                .map(Message::About);
-            stack![base, about_overlay]
+        // Layer: chat spotlight overlay
+        let with_chat = if self.show_chat {
+            let chat_overlay = spotlight::view_spotlight(
+                &self.chat_input,
+                &self.chat_messages,
+                self.agent_thinking,
+                self.connected,
+                &palette,
+            )
+            .map(Message::Chat);
+            stack![base, chat_overlay]
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .into()
         } else {
             base.into()
+        };
+
+        // Layer: about modal (on top of everything)
+        if self.show_about {
+            let about_overlay = about::view_about(self.connected, self.agent_active, &palette)
+                .map(Message::About);
+            stack![with_chat, about_overlay]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            with_chat
         }
     }
 
