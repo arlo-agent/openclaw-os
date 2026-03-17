@@ -25,9 +25,24 @@
         ];
       };
 
+      # aarch64 generic (UTM, QEMU, ARM mini PCs)
+      nixosConfigurations.openclaw-arm = nixpkgs.lib.nixosSystem {
+        system = "aarch64-linux";
+        modules = [
+          ./modules/hardware-aarch64.nix
+          ./modules/base.nix
+          ./modules/boot.nix
+          ./modules/openclaw.nix
+          ./modules/voice.nix
+          ./modules/shell.nix
+        ];
+      };
+
+      # Raspberry Pi 5
       nixosConfigurations.openclaw-pi = nixpkgs.lib.nixosSystem {
         system = "aarch64-linux";
         modules = [
+          ./modules/hardware-aarch64.nix
           ./modules/base.nix
           ./modules/boot.nix
           ./modules/openclaw.nix
