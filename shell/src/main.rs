@@ -484,7 +484,7 @@ impl App {
 
         let layout = if show_dock {
             let dock_view =
-                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode, self.dock_focused)
+                dock::view_dock(&self.dock_input, self.listening, &palette, self.theme_mode, self.dock_focused, self.connected)
                     .map(Message::Dock);
             column![
                 status_bar_view,

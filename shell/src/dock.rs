@@ -28,10 +28,11 @@ pub fn view_dock<'a>(
     palette: &OpenClawPalette,
     _theme_mode: crate::theme::ThemeMode,
     _focused: bool,
+    connected: bool,
 ) -> Element<'a, DockMessage> {
     let p = *palette;
     let has_text = !input_value.is_empty();
-    let is_active = has_text;
+    let is_active = has_text && connected;
 
     // Mic button
     let mic_icon = if listening {
@@ -44,18 +45,31 @@ pub fn view_dock<'a>(
     } else {
         p.text_primary
     };
-    let mic_btn = button(icon(mic_icon, 18.0, mic_color))
-        .on_press(DockMessage::ToggleVoice)
+    let mut mic_btn = button(icon(mic_icon, 18.0, if connected { mic_color } else { p.text_muted }))
         .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
         .style(button::text);
+    if connected {
+        mic_btn = mic_btn.on_press(DockMessage::ToggleVoice);
+    }
 
-    // Borderless text input — styled to blend into the dock
-    let input = text_input("Talk to your agent...", input_value)
-        .on_input(DockMessage::InputChanged)
-        .on_submit(DockMessage::Submit)
+    // Borderless text input — disabled while connecting
+    let placeholder = if connected {
+        "Talk to your agent..."
+    } else {
+        "Connecting to your agent..."
+    };
+
+    let mut input = text_input(placeholder, input_value)
         .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
-        .size(theme::FONT_BODY)
-        .style(move |_theme, status| {
+        .size(theme::FONT_BODY);
+
+    if connected {
+        input = input
+            .on_input(DockMessage::InputChanged)
+            .on_submit(DockMessage::Submit);
+    }
+
+    let input = input.style(move |_theme, status| {
             // Borderless input that blends with dock background
             let focused = matches!(status, text_input::Status::Focused);
             text_input::Style {
@@ -78,7 +92,7 @@ pub fn view_dock<'a>(
         });
 
     // Send button
-    let send_btn = if has_text {
+    let send_btn = if has_text && connected {
         button(icon(Bootstrap::SendFill, 16.0, p.coral_bright))
             .on_press(DockMessage::Submit)
             .padding(Padding::from([theme::GRID, theme::GRID * 1.2]))
