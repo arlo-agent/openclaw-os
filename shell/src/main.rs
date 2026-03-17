@@ -447,26 +447,32 @@ impl App {
                     .width(400)
                     .height(Length::Fill);
 
-                // Toast notification overlay or notification panel
-                let mut left_items: Vec<Element<Message>> = Vec::new();
-
-                if self.notifs.panel_open {
-                    let panel = notifications::view_panel(&self.notifs, &palette)
-                        .map(Message::Notification);
-                    left_items.push(panel);
-                } else if let Some(toast) = self.notifs.active_toast() {
-                    let toast_view = notifications::view_toast(toast, &palette)
-                        .map(Message::Notification);
-                    left_items.push(toast_view);
-                }
-
-                left_items.push(clock);
-
-                let left = column(left_items)
+                let left = column![clock]
                     .width(Length::Fill)
                     .height(Length::Fill);
 
-                row![left, right_panel].height(Length::Fill).into()
+                let base_layout: Element<Message> = row![left, right_panel]
+                    .height(Length::Fill)
+                    .into();
+
+                // Notification overlay (full width, right-aligned)
+                if self.notifs.panel_open {
+                    let panel = notifications::view_panel(&self.notifs, &palette)
+                        .map(Message::Notification);
+                    stack![base_layout, panel]
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()
+                } else if let Some(toast) = self.notifs.active_toast() {
+                    let toast_view = notifications::view_toast(toast, &palette)
+                        .map(Message::Notification);
+                    stack![base_layout, toast_view]
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .into()
+                } else {
+                    base_layout
+                }
             }
             AppView::Conversation => {
                 conversation::view_conversation(&self.chat_messages, self.agent_thinking, &palette)
