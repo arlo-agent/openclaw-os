@@ -51,8 +51,6 @@
   # Auto-login to openclaw user
   services.getty.autologinUser = "openclaw";
 
-  # logind creates /run/user/<uid> which the shell service needs
-  services.logind.enable = true;
 
   # Essential packages
   environment.systemPackages = with pkgs; [
