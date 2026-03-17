@@ -10,8 +10,8 @@
 
   # Boot config is in boot.nix (branded GRUB + Plymouth)
 
-  # Boot into graphical target so openclaw-shell.service starts
-  systemd.defaultTarget = "graphical.target";
+  # Pull graphical.target into default boot so openclaw-shell.service starts
+  systemd.targets.graphical.wantedBy = [ "default.target" ];
 
   # Networking
   networking.networkmanager.enable = true;
