@@ -11,6 +11,7 @@ mod messaging_setup;
 mod notifications;
 mod ollama;
 mod statusbar;
+mod terminal;
 mod theme;
 mod welcome;
 mod widgets;

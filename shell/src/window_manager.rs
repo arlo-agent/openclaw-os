@@ -1,10 +1,12 @@
 //! In-app window manager — draggable, resizable, z-ordered overlay windows.
 
+use crate::terminal::{self, TerminalState};
 use crate::theme::{self, OpenClawPalette, BORDER_RADIUS};
 use crate::widgets::glass_card;
 use iced::widget::{button, column, container, mouse_area, row, stack, text, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
+use std::collections::HashMap;
 
 pub type WindowId = u64;
 
@@ -68,6 +70,7 @@ pub struct WindowManager {
     next_id: WindowId,
     drag_state: DragState,
     next_z: u32,
+    terminal_states: HashMap<WindowId, TerminalState>,
 }
 
 impl WindowManager {
@@ -77,6 +80,7 @@ impl WindowManager {
             next_id: 1,
             drag_state: DragState::None,
             next_z: 1,
+            terminal_states: HashMap::new(),
         }
     }
 
@@ -93,6 +97,9 @@ impl WindowManager {
         self.next_id += 1;
         let z = self.next_z;
         self.next_z += 1;
+        if matches!(content, WindowContent::Terminal) {
+            self.terminal_states.insert(id, TerminalState::new());
+        }
         self.windows.push(Window {
             id,
             title,
@@ -110,6 +117,7 @@ impl WindowManager {
 
     pub fn close_window(&mut self, id: WindowId) {
         self.windows.retain(|w| w.id != id);
+        self.terminal_states.remove(&id);
     }
 
     pub fn bring_to_front(&mut self, id: WindowId) {
@@ -196,9 +204,21 @@ impl WindowManager {
             WindowManagerMessage::BringToFront(id) => {
                 self.bring_to_front(id);
             }
-            WindowManagerMessage::WindowContent(_id, _msg) => {
-                // Will be handled in T03
-            }
+            WindowManagerMessage::WindowContent(id, msg) => match msg {
+                WindowContentMessage::TerminalInput(val) => {
+                    if let Some(state) = self.terminal_states.get_mut(&id) {
+                        state.input = val;
+                    }
+                }
+                WindowContentMessage::TerminalSubmit => {
+                    if let Some(state) = self.terminal_states.get_mut(&id) {
+                        state.execute_command();
+                        if state.should_close {
+                            self.close_window(id);
+                        }
+                    }
+                }
+            },
         }
     }
 }
@@ -224,6 +244,7 @@ fn content_icon(content: &WindowContent) -> Bootstrap {
 fn view_single_window<'a>(
     win: &'a Window,
     palette: &OpenClawPalette,
+    terminal_states: &'a HashMap<WindowId, TerminalState>,
 ) -> Element<'a, WindowManagerMessage> {
     let p = *palette;
     let wid = win.id;
@@ -268,18 +289,27 @@ fn view_single_window<'a>(
         .into();
 
     // --- Content area ---
-    let content_area = container(
-        text("Terminal content here")
-            .size(theme::FONT_BODY)
-            .color(p.text_muted),
-    )
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .padding(theme::GRID)
-    .style(move |_: &_| container::Style {
-        background: Some(iced::Background::Color(p.bg_deep)),
-        ..Default::default()
-    });
+    let content_area: Element<'a, WindowManagerMessage> = match &win.content {
+        WindowContent::Terminal => {
+            if let Some(term_state) = terminal_states.get(&wid) {
+                terminal::view_terminal(term_state, wid, &p)
+            } else {
+                container(
+                    text("Terminal not initialized")
+                        .size(theme::FONT_BODY)
+                        .color(p.text_muted),
+                )
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .padding(theme::GRID)
+                .style(move |_: &_| container::Style {
+                    background: Some(iced::Background::Color(p.bg_deep)),
+                    ..Default::default()
+                })
+                .into()
+            }
+        }
+    };
 
     // --- Resize handle (bottom-right) ---
     let resize_icon = bicon(Bootstrap::ArrowsAngleExpand, 10.0, p.text_muted);
@@ -341,7 +371,7 @@ pub fn view_windows<'a>(
 
     let mut layers: Vec<Element<'a, WindowManagerMessage>> = Vec::new();
     for win in sorted {
-        layers.push(view_single_window(win, palette));
+        layers.push(view_single_window(win, palette, &wm.terminal_states));
     }
 
     // Stack all windows; lowest z first (painter's algorithm)
