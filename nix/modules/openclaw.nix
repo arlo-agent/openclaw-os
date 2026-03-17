@@ -44,5 +44,6 @@
   systemd.tmpfiles.rules = [
     "d /home/openclaw/.openclaw 0755 openclaw users -"
     "d /home/openclaw/.openclaw/workspace 0755 openclaw users -"
+    "d /home/openclaw/.npm 0755 openclaw users -"
   ];
 }
