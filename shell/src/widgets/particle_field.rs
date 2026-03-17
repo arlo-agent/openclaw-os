@@ -125,24 +125,42 @@ impl ParticleField {
             .into()
     }
 
-    /// Blend between coral and cyan. In light mode, use darker/more saturated variants.
-    fn blend_color(&self, t: f32, alpha: f32, palette: &OpenClawPalette) -> Color {
+    /// Blend between coral and cyan.
+    /// Dark mode: color at given alpha over dark bg.
+    /// Light mode: vivid color that fades toward white (not dark).
+    fn blend_color(&self, t: f32, alpha: f32, _palette: &OpenClawPalette) -> Color {
         let t = t.clamp(0.0, 1.0);
         let is_dark = matches!(self.theme_mode, ThemeMode::Dark);
 
-        // In light mode use the mid (darker/more saturated) brand colors
-        let (c, n) = if is_dark {
-            (palette.coral_bright, palette.cyan_bright)
+        if is_dark {
+            // Dark mode: bright coral ↔ bright cyan, with alpha transparency
+            let coral = (1.0, 0.3, 0.3);   // vivid coral
+            let cyan = (0.0, 0.9, 0.8);    // vivid cyan
+            Color::from_rgba(
+                coral.0 * (1.0 - t) + cyan.0 * t,
+                coral.1 * (1.0 - t) + cyan.1 * t,
+                coral.2 * (1.0 - t) + cyan.2 * t,
+                alpha,
+            )
         } else {
-            (palette.coral_mid, palette.cyan_mid)
-        };
+            // Light mode: saturated colors, premixed toward white
+            // This way accumulation goes color → white, not color → dark
+            let coral = (0.95, 0.25, 0.30);  // vivid coral
+            let cyan = (0.0, 0.70, 0.65);    // vivid teal
+            let base_r = coral.0 * (1.0 - t) + cyan.0 * t;
+            let base_g = coral.1 * (1.0 - t) + cyan.1 * t;
+            let base_b = coral.2 * (1.0 - t) + cyan.2 * t;
 
-        Color::from_rgba(
-            c.r * (1.0 - t) + n.r * t,
-            c.g * (1.0 - t) + n.g * t,
-            c.b * (1.0 - t) + n.b * t,
-            alpha,
-        )
+            // Premix with white: blend (color → white) based on alpha
+            // Lower alpha = more white, higher alpha = more color
+            let mix = alpha.clamp(0.0, 1.0);
+            Color::from_rgba(
+                base_r * mix + 1.0 * (1.0 - mix),
+                base_g * mix + 1.0 * (1.0 - mix),
+                base_b * mix + 1.0 * (1.0 - mix),
+                alpha.min(0.6),  // cap opacity so orbs stay soft
+            )
+        }
     }
 }
 
@@ -181,8 +199,8 @@ impl canvas::Program<()> for ParticleField {
                 let peak_alpha = if is_dark {
                     0.10 * (0.75 + breath * 0.25)
                 } else {
-                    // Light mode needs aggressive alpha — colors fight a white bg
-                    1.6 * (0.75 + breath * 0.25)
+                    // Light mode: moderate alpha, the blend_color handles white fade
+                    0.35 * (0.75 + breath * 0.25)
                 };
 
                 // Draw rings from outside in
@@ -208,7 +226,7 @@ impl canvas::Program<()> for ParticleField {
             // === Soft particles ===
             for p in &self.particles {
                 let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
-                let base_alpha = if is_dark { 0.12 } else { 0.8 };
+                let base_alpha = if is_dark { 0.12 } else { 0.4 };
                 let alpha = base_alpha * (0.5 + pulse);
                 let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
