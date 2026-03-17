@@ -237,7 +237,7 @@ pub fn view_toast(
             .width(Length::Fill),
         )
         .padding(Padding::from([theme::GRID, theme::GRID * 1.5]))
-        .max_width(320)
+        .max_width(220)
         .style(move |_: &_| card_style),
     )
     .on_press(NotificationMessage::ClickNotification(msg_idx))
