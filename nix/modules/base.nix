@@ -10,6 +10,9 @@
 
   # Boot config is in boot.nix (branded GRUB + Plymouth)
 
+  # Boot into graphical target so openclaw-shell.service starts
+  systemd.defaultTarget = "graphical.target";
+
   # Networking
   networking.networkmanager.enable = true;
 
@@ -47,6 +50,9 @@
 
   # Auto-login to openclaw user
   services.getty.autologinUser = "openclaw";
+
+  # logind creates /run/user/<uid> which the shell service needs
+  services.logind.enable = true;
 
   # Essential packages
   environment.systemPackages = with pkgs; [
