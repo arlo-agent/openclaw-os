@@ -24,6 +24,7 @@ in
       wlr-randr
       foot            # Terminal emulator
       chromium        # Web browser
+      waybar          # Taskbar
     ];
   };
 
@@ -70,8 +71,16 @@ in
   # Ensure the shell binary and display tools are available
   environment.systemPackages = [
     pkgs.wlr-randr     # Display configuration
+    pkgs.waybar         # Taskbar
     openclaw-shell      # The shell UI binary
   ];
+
+  # Install waybar config
+  environment.etc."openclaw/waybar/config.jsonc".source = ../../assets/waybar/config.jsonc;
+  environment.etc."openclaw/waybar/style.css".source = ../../assets/waybar/style.css;
+
+  # Install foot terminal config
+  environment.etc."xdg/foot/foot.ini".source = ../../assets/foot/foot.ini;
 
   # Make sure openclaw-gateway starts before the greeter session
   systemd.services.greetd = {

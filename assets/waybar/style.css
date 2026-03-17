@@ -1,0 +1,113 @@
+/* OpenClaw OS — Waybar Theme */
+/* Glass aesthetic: dark surfaces, coral accents, frosted transparency */
+
+* {
+    font-family: "Inter", "JetBrains Mono", sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background: rgba(10, 15, 26, 0.75);
+    border: 1px solid rgba(136, 146, 176, 0.15);
+    border-radius: 14px;
+    color: #f0f4ff;
+}
+
+/* Remove all default borders/margins on modules */
+window#waybar > box {
+    margin: 0;
+    padding: 0 12px;
+}
+
+/* ── Workspaces ── */
+#workspaces button {
+    padding: 4px 8px;
+    margin: 4px 2px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: #5a6480;
+    transition: all 0.2s ease;
+}
+
+#workspaces button.focused {
+    background: rgba(255, 77, 77, 0.15);
+    color: #ff4d4d;
+}
+
+#workspaces button:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #f0f4ff;
+}
+
+/* ── Window Title ── */
+#window {
+    padding: 4px 12px;
+    color: #8892b0;
+    font-weight: 500;
+}
+
+/* ── Clock ── */
+#clock {
+    padding: 4px 16px;
+    color: #f0f4ff;
+    font-weight: 600;
+}
+
+/* ── Agent Status ── */
+#custom-agent-status {
+    padding: 4px 8px;
+    font-size: 10px;
+}
+
+#custom-agent-status.connected {
+    color: #00e5cc;
+}
+
+#custom-agent-status.disconnected {
+    color: #ff4d4d;
+}
+
+/* ── Pulseaudio ── */
+#pulseaudio {
+    padding: 4px 8px;
+    color: #8892b0;
+}
+
+#pulseaudio.muted {
+    color: #5a6480;
+}
+
+/* ── Network ── */
+#network {
+    padding: 4px 8px;
+    color: #8892b0;
+}
+
+#network.disconnected {
+    color: #ff4d4d;
+}
+
+/* ── Tray ── */
+#tray {
+    padding: 4px 4px;
+}
+
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+    background: rgba(255, 77, 77, 0.15);
+    border-radius: 8px;
+}
+
+/* ── Tooltip ── */
+tooltip {
+    background: rgba(10, 15, 26, 0.9);
+    border: 1px solid rgba(136, 146, 176, 0.2);
+    border-radius: 8px;
+    color: #f0f4ff;
+}

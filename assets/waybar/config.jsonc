@@ -1,0 +1,70 @@
+{
+    "layer": "top",
+    "position": "bottom",
+    "height": 44,
+    "spacing": 8,
+    "margin-left": 8,
+    "margin-right": 8,
+    "margin-bottom": 6,
+
+    "modules-left": ["sway/workspaces", "sway/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["custom/agent-status", "pulseaudio", "network", "tray"],
+
+    "sway/workspaces": {
+        "disable-scroll": false,
+        "all-outputs": true,
+        "format": "{icon}",
+        "format-icons": {
+            "1": "●",
+            "2": "●",
+            "3": "●",
+            "4": "●",
+            "focused": "◉",
+            "default": "○"
+        }
+    },
+
+    "sway/window": {
+        "format": "{}",
+        "max-length": 40,
+        "rewrite": {
+            "(.*) — Mozilla Firefox": "🌐 $1",
+            "(.*) - Chromium": "🌐 $1",
+            "foot": "⬛ Terminal",
+            "(.*) - foot": "⬛ $1"
+        }
+    },
+
+    "clock": {
+        "format": "{:%a %b %d   %H:%M}",
+        "tooltip-format": "{:%A, %B %d, %Y\n%H:%M:%S}"
+    },
+
+    "custom/agent-status": {
+        "exec": "echo '{\"text\": \"◉\", \"class\": \"connected\", \"tooltip\": \"Agent online\"}'",
+        "return-type": "json",
+        "interval": 10,
+        "format": "{}"
+    },
+
+    "pulseaudio": {
+        "format": "{icon}",
+        "format-muted": "🔇",
+        "format-icons": {
+            "default": ["🔈", "🔉", "🔊"]
+        },
+        "on-click": "pavucontrol"
+    },
+
+    "network": {
+        "format-wifi": "📶",
+        "format-ethernet": "🔗",
+        "format-disconnected": "❌",
+        "tooltip-format": "{ifname}: {ipaddr}"
+    },
+
+    "tray": {
+        "spacing": 8
+    }
+}

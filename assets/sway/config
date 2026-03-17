@@ -10,6 +10,9 @@ set $browser chromium
 # Start OpenClaw shell on startup
 exec openclaw-shell
 
+# Start waybar
+exec waybar -c /etc/openclaw/waybar/config.jsonc -s /etc/openclaw/waybar/style.css
+
 # Keybindings
 bindsym $mod+Return exec $term
 bindsym $mod+b exec $browser
@@ -35,7 +38,19 @@ bindsym $mod+h splith
 bindsym $mod+v splitv
 bindsym $mod+f fullscreen toggle
 bindsym $mod+Shift+space floating toggle
-bindsym $mod+space focus mode_toggle
+
+# Workspace keybindings
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+
+# Super+Space to toggle OpenClaw chat overlay
+bindsym $mod+space exec pkill -SIGUSR1 openclaw-shell || true
 
 # Resize mode
 mode "resize" {
@@ -48,6 +63,8 @@ mode "resize" {
 bindsym $mod+r mode "resize"
 
 # Appearance — OpenClaw branding
+# No title bars — waybar handles the taskbar, keybindings handle window controls
+# CSD (client-side decorations) in GTK apps will follow the GTK theme
 default_border pixel 2
 default_floating_border pixel 2
 gaps inner 8
@@ -55,14 +72,9 @@ gaps outer 4
 
 # Colors: border, background, text, indicator, child_border
 # Coral accent for focused windows
-client.focused #ff4d4d #050810 #f0f4ff #00e5cc #ff4d4d
+client.focused #ff4d4d #0a0f1a #f0f4ff #00e5cc #ff4d4d
 client.unfocused #1a1a2e #050810 #5a6480 #1a1a2e #1a1a2e
 client.focused_inactive #2a2a4e #050810 #8892b0 #2a2a4e #2a2a4e
-
-# No Sway bar — OpenClaw shell provides its own
-bar {
-    mode invisible
-}
 
 # Output config
 output * bg #050810 solid_color
