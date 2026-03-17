@@ -1,4 +1,11 @@
 # Shell UI module — the visual experience
+#
+# Uses NixOS's built-in services.cage module which handles:
+# - TTY allocation and getty conflict
+# - PAM session (creates XDG_RUNTIME_DIR via pam_systemd)
+# - Plymouth handoff
+# - systemd.defaultUnit = graphical.target
+# - Proper service dependencies and ordering
 
 { config, pkgs, lib, ... }:
 
@@ -6,49 +13,19 @@ let
   openclaw-shell = pkgs.callPackage ../packages/shell.nix {};
 in
 {
-  # Minimal Wayland compositor (cage for now, custom later)
-  # Cage runs a single application fullscreen — perfect for kiosk/shell
-  programs.sway.enable = false; # We don't want sway
-  
-  # For Phase 1: cage compositor + Tauri shell
-  # For Phase 2: custom smithay-based compositor + Iced shell
-  
-  # Shell service — only starts if the binary exists
-  # For development: build the shell locally then symlink to /opt/openclaw-os/shell/
-  # For production: this will use a Nix-built package
-  systemd.services.openclaw-shell = {
-    description = "OpenClaw Shell UI";
-    wantedBy = [ "graphical.target" ];
-    after = [ "openclaw-gateway.service" "network.target" ];
-    wants = [ "openclaw-gateway.service" ];
-
-    serviceConfig = {
-      Type = "simple";
-      User = "openclaw";
-      Group = "users";
-
-      # cage compositor running the Nix-built shell binary fullscreen
-      ExecStart = "${pkgs.cage}/bin/cage -s -- ${openclaw-shell}/bin/openclaw-shell";
-
-      Restart = "on-failure";
-      RestartSec = 5;
-
-      # GPU access
-      SupplementaryGroups = [ "video" "render" ];
-    };
-
+  # Use the built-in NixOS cage kiosk module
+  services.cage = {
+    enable = true;
+    user = "openclaw";
+    program = "${openclaw-shell}/bin/openclaw-shell";
     environment = {
       WLR_LIBINPUT_NO_DEVICES = "1";
-      XDG_RUNTIME_DIR = "/run/user/1000";
-      # Use pixman (software) renderer as fallback — vulkan may not be available
-      WLR_RENDERER = "pixman";
     };
   };
 
   # GPU drivers
   hardware.graphics = {
     enable = true;
-    # Enable Vulkan
   };
 
   # Fonts — the typography matters
@@ -72,10 +49,15 @@ in
     };
   };
 
-  # Cursor theme (hidden most of the time, but needed for touch fallback)
+  # Ensure the shell binary and display tools are available
   environment.systemPackages = [
-    pkgs.cage          # Wayland kiosk compositor
     pkgs.wlr-randr     # Display configuration
     openclaw-shell     # The shell UI binary
   ];
+
+  # Make sure openclaw-gateway starts before the shell
+  systemd.services."cage-tty1" = {
+    after = [ "openclaw-gateway.service" ];
+    wants = [ "openclaw-gateway.service" ];
+  };
 }
