@@ -7,7 +7,7 @@
   systemd.services.openclaw-gateway = {
     description = "OpenClaw AI Gateway";
     wantedBy = [ "multi-user.target" ];
-    after = [ "network-online.target" "pipewire.service" ];
+    after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
 
     serviceConfig = {

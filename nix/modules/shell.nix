@@ -10,32 +10,39 @@
   # For Phase 1: cage compositor + Tauri shell
   # For Phase 2: custom smithay-based compositor + Iced shell
   
+  # Shell service — only starts if the binary exists
+  # For development: build the shell locally then symlink to /opt/openclaw-os/shell/
+  # For production: this will use a Nix-built package
   systemd.services.openclaw-shell = {
     description = "OpenClaw Shell UI";
     wantedBy = [ "graphical.target" ];
-    after = [ "openclaw-gateway.service" ];
+    after = [ "openclaw-gateway.service" "network.target" ];
     wants = [ "openclaw-gateway.service" ];
+
+    # Don't start if binary doesn't exist yet
+    unitConfig = {
+      ConditionPathExists = "/opt/openclaw-os/shell/openclaw-shell";
+    };
 
     serviceConfig = {
       Type = "simple";
       User = "openclaw";
       Group = "users";
 
-      # Phase 1: cage compositor running the shell app
+      # cage compositor running the shell app fullscreen
       ExecStart = "${pkgs.cage}/bin/cage -s -- /opt/openclaw-os/shell/openclaw-shell";
 
-      Restart = "always";
-      RestartSec = 3;
+      Restart = "on-failure";
+      RestartSec = 5;
 
       # GPU access
       SupplementaryGroups = [ "video" "render" ];
     };
 
     environment = {
-      WLR_LIBINPUT_NO_DEVICES = "1"; # Don't fail if no input devices
+      WLR_LIBINPUT_NO_DEVICES = "1";
       XDG_RUNTIME_DIR = "/run/user/1000";
-      # GPU rendering
-      WLR_RENDERER = "vulkan"; # Prefer Vulkan, fall back to GLES
+      WLR_RENDERER = "vulkan";
     };
   };
 
