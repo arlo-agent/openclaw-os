@@ -17,6 +17,7 @@
         system = "x86_64-linux";
         modules = [
           ./modules/base.nix
+          ./modules/boot.nix
           ./modules/openclaw.nix
           ./modules/voice.nix
           ./modules/shell.nix
@@ -27,6 +28,7 @@
         system = "aarch64-linux";
         modules = [
           ./modules/base.nix
+          ./modules/boot.nix
           ./modules/openclaw.nix
           ./modules/voice.nix
           ./modules/shell.nix

@@ -1,0 +1,39 @@
+# OpenClaw OS GRUB Theme
+# Brand colors: bg #050810, coral #FF4D4D, cyan #00E5CC
+
+# Desktop
+title-text: ""
+desktop-color: "#050810"
+desktop-image: "background.png"
+terminal-font: "Unifont Regular 16"
+
+# Boot menu
++ boot_menu {
+  left = 35%
+  top = 52%
+  width = 30%
+  height = 30%
+  item_font = "Unifont Regular 16"
+  item_color = "#8892B0"
+  selected_item_font = "Unifont Regular 16"
+  selected_item_color = "#F0F4FF"
+  selected_item_pixmap_style = "select_*.png"
+  item_height = 32
+  item_padding = 8
+  item_spacing = 4
+  icon_width = 0
+  icon_height = 0
+}
+
+# Progress bar (for countdown)
++ progress_bar {
+  id = "__timeout__"
+  left = 38%
+  top = 85%
+  width = 24%
+  height = 4
+  show_text = false
+  fg_color = "#FF4D4D"
+  bg_color = "#111827"
+  border_color = "#111827"
+}

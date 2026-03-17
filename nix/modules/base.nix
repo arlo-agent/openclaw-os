@@ -8,19 +8,7 @@
   networking.hostName = "openclaw";
   time.timeZone = "UTC"; # Agent handles user timezone
 
-  # Boot — fast and quiet
-  boot = {
-    loader.systemd-boot.enable = true;
-    loader.efi.canTouchEfiVariables = true;
-    plymouth.enable = true; # Splash screen during boot
-    consoleLogLevel = 0;    # Quiet boot
-    initrd.verbose = false;
-    kernelParams = [
-      "quiet"
-      "splash"
-      "udev.log_level=3"
-    ];
-  };
+  # Boot config is in boot.nix (branded GRUB + Plymouth)
 
   # Networking
   networking.networkmanager.enable = true;
