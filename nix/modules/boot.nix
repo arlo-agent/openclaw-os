@@ -19,6 +19,19 @@ let
     cp ${../../assets/boot/select_w.png} $out/select_w.png
     cp ${../../assets/boot/select_e.png} $out/select_e.png
   '';
+
+  # Plymouth theme — logo + coral orbital spinner
+  plymouthTheme = pkgs.runCommand "openclaw-plymouth-theme" {} ''
+    mkdir -p $out/share/plymouth/themes/openclaw
+    cp ${../../assets/plymouth/openclaw.plymouth} $out/share/plymouth/themes/openclaw/
+    cp ${../../assets/plymouth/openclaw.script} $out/share/plymouth/themes/openclaw/
+    cp ${../../assets/plymouth/logo.png} $out/share/plymouth/themes/openclaw/
+    cp ${../../assets/plymouth/background.png} $out/share/plymouth/themes/openclaw/
+    # Copy all spinner frames
+    for f in ${../../assets/plymouth}/spinner-*.png; do
+      cp "$f" $out/share/plymouth/themes/openclaw/
+    done
+  '';
 in
 {
   boot = {
@@ -65,8 +78,8 @@ in
     # Plymouth splash screen (shows between GRUB and shell UI)
     plymouth = {
       enable = true;
-      # TODO: Custom OpenClaw Plymouth theme
-      # For now use the default spinner with our colors
+      theme = "openclaw";
+      themePackages = [ plymouthTheme ];
     };
   };
 

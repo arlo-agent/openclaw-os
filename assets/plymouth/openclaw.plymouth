@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=OpenClaw OS
+Description=OpenClaw OS boot splash — dark background, logo, coral spinner
+ModuleName=script
+
+[script]
+ImageDir=/share/plymouth/themes/openclaw
+ScriptFile=/share/plymouth/themes/openclaw/openclaw.script
