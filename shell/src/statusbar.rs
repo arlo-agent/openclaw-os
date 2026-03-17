@@ -19,6 +19,7 @@ const LOGO_SIZE: f32 = 16.0;
 #[derive(Debug, Clone)]
 pub enum StatusBarMessage {
     ToggleTheme,
+    ShowAbout,
     Notification(NotificationMessage),
 }
 
@@ -79,9 +80,13 @@ pub fn view_statusbar(
 
     // Logo (embedded at compile time)
     let logo_handle = image::Handle::from_bytes(LOGO_BYTES);
-    let logo = image(logo_handle)
+    let logo_img = image(logo_handle)
         .width(LOGO_SIZE)
         .height(LOGO_SIZE);
+    let logo = button(logo_img)
+        .on_press(StatusBarMessage::ShowAbout)
+        .padding(0)
+        .style(button::text);
 
     // Connection status
     let conn_color = if connected {

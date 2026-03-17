@@ -1,5 +1,6 @@
 #![allow(dead_code, unused_imports, unused_variables)]
 
+mod about;
 mod ambient;
 mod cards;
 mod conversation;
@@ -63,6 +64,7 @@ struct App {
     welcome: WelcomeState,
     ollama_client: OllamaClient,
     notifs: NotificationState,
+    show_about: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -74,6 +76,7 @@ enum Message {
     Welcome(WelcomeMessage),
     Notification(NotificationMessage),
     StatusBar(StatusBarMessage),
+    About(about::AboutMessage),
 }
 
 impl Default for App {
@@ -157,6 +160,7 @@ impl Default for App {
             welcome: welcome_state,
             ollama_client,
             notifs: NotificationState::default(),
+            show_about: false,
         }
     }
 }
@@ -354,7 +358,19 @@ impl App {
                     self.notifs.panel_open = false;
                 }
             },
+            Message::About(about_msg) => match about_msg {
+                about::AboutMessage::Close => {
+                    self.show_about = false;
+                }
+                about::AboutMessage::OpenTerminal => {
+                    self.show_about = false;
+                    // TODO: open terminal
+                }
+            },
             Message::StatusBar(sb_msg) => match sb_msg {
+                StatusBarMessage::ShowAbout => {
+                    self.show_about = true;
+                }
                 StatusBarMessage::ToggleTheme => {
                     self.theme_mode = self.theme_mode.toggle();
                     self.particles.set_theme_mode(self.theme_mode);
@@ -509,10 +525,20 @@ impl App {
             .height(Length::Fill)
         };
 
-        stack![bg, particles, layout]
+        let base = stack![bg, particles, layout]
             .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+            .height(Length::Fill);
+
+        if self.show_about {
+            let about_overlay = about::view_about(self.connected, self.agent_active, &palette)
+                .map(Message::About);
+            stack![base, about_overlay]
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .into()
+        } else {
+            base.into()
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
