@@ -163,10 +163,19 @@ pub fn view_statusbar(
         .padding(Padding::from([4, 6]))
         .style(button::text);
 
+    // Date/time
+    let now = chrono::Local::now();
+    let datetime_str = now.format("%a %b %-d  %H:%M").to_string();
+    let datetime = text(datetime_str)
+        .size(ICON_SIZE - 1.0)
+        .color(p.text_secondary);
+
     let right = row![
         theme_btn,
         Space::with_width(6),
         bell_btn,
+        Space::with_width(12),
+        datetime,
     ]
     .align_y(Alignment::Center);
 
