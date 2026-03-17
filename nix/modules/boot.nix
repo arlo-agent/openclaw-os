@@ -21,25 +21,22 @@ let
   '';
 
   # Plymouth theme — logo + coral orbital spinner
-  plymouthTheme = pkgs.runCommand "openclaw-plymouth-theme" {} ''
-    themeDir=$out/share/plymouth/themes/openclaw
-    mkdir -p $themeDir
-
-    # Copy and patch the .plymouth file with correct store paths
-    sed \
-      -e "s|@@IMAGEDIR@@|$themeDir|g" \
-      -e "s|@@SCRIPTFILE@@|$themeDir/openclaw.script|g" \
-      ${../../assets/plymouth/openclaw.plymouth} > $themeDir/openclaw.plymouth
-
-    cp ${../../assets/plymouth/openclaw.script} $themeDir/
-    cp ${../../assets/plymouth/logo.png} $themeDir/
-    cp ${../../assets/plymouth/background.png} $themeDir/
-
-    # Copy all spinner frames
-    for f in ${../../assets/plymouth}/spinner-*.png; do
-      cp "$f" $themeDir/
-    done
-  '';
+  # Uses /etc/plymouth/themes/openclaw as the runtime path (standard for NixOS Plymouth)
+  plymouthTheme = pkgs.stdenv.mkDerivation {
+    pname = "openclaw-plymouth-theme";
+    version = "1.0";
+    src = ../../assets/plymouth;
+    dontBuild = true;
+    installPhase = ''
+      themeDir=$out/share/plymouth/themes/openclaw
+      mkdir -p $themeDir
+      cp openclaw.plymouth $themeDir/
+      cp openclaw.script $themeDir/
+      cp logo.png $themeDir/
+      cp background.png $themeDir/
+      cp spinner-*.png $themeDir/
+    '';
+  };
 in
 {
   boot = {
