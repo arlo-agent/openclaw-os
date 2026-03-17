@@ -283,6 +283,8 @@ impl App {
                 self.process_gateway_events();
                 // Notification tick (toast timing)
                 self.notifs.tick();
+                // Terminal PTY tick
+                self.wm.tick_terminals();
                 // Ollama tick (during welcome wizard)
                 if matches!(self.view, AppView::Welcome) {
                     self.process_ollama_events();

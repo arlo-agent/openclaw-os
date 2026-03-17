@@ -212,13 +212,19 @@ impl WindowManager {
                 }
                 WindowContentMessage::TerminalSubmit => {
                     if let Some(state) = self.terminal_states.get_mut(&id) {
-                        state.execute_command();
+                        state.send_input();
                         if state.should_close {
                             self.close_window(id);
                         }
                     }
                 }
             },
+        }
+    }
+
+    pub fn tick_terminals(&mut self) {
+        for state in self.terminal_states.values_mut() {
+            state.tick();
         }
     }
 }

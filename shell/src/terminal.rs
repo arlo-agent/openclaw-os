@@ -1,169 +1,174 @@
-//! Embedded terminal — interactive command shell inside WM windows.
+//! Embedded terminal — real PTY-based shell inside WM windows.
 
 use crate::theme::{self, OpenClawPalette};
 use crate::window_manager::{WindowContentMessage, WindowId, WindowManagerMessage};
 use iced::widget::{column, container, row, scrollable, text, text_input, Space};
 use iced::{Alignment, Color, Element, Length, Padding};
-
-pub struct TerminalLine {
-    pub text: String,
-    pub is_command: bool,
-}
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use std::io::{Read as IoRead, Write as IoWrite};
+use std::sync::mpsc;
 
 pub struct TerminalState {
+    pub output_text: String,
     pub input: String,
-    pub output_lines: Vec<TerminalLine>,
-    pub working_dir: String,
-    pub history: Vec<String>,
-    pub history_index: Option<usize>,
     pub scrollback_limit: usize,
     pub should_close: bool,
+    writer: Option<Box<dyn IoWrite + Send>>,
+    output_rx: Option<mpsc::Receiver<String>>,
 }
 
 impl TerminalState {
     pub fn new() -> Self {
-        let working_dir = std::env::var("HOME").unwrap_or_else(|_| "/home/openclaw".to_string());
+        let pty_system = native_pty_system();
+
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("Failed to open PTY");
+
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+
+        let mut cmd = CommandBuilder::new("bash");
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("PS1", "\\w$ ");
+        cmd.cwd(&home);
+
+        // Try bash, fall back to sh
+        let child = match pair.slave.spawn_command(cmd) {
+            Ok(child) => child,
+            Err(_) => {
+                let mut cmd = CommandBuilder::new("sh");
+                cmd.env("TERM", "xterm-256color");
+                cmd.cwd(&home);
+                pair.slave.spawn_command(cmd)
+                    .expect("Failed to spawn shell")
+            }
+        };
+
+        // Drop slave — we only use the master side
+        drop(pair.slave);
+
+        let writer = pair.master.take_writer().expect("Failed to take PTY writer");
+
+        let (tx, rx) = mpsc::channel::<String>();
+
+        // Reader thread
+        let mut reader = pair.master.try_clone_reader().expect("Failed to clone PTY reader");
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let chunk = String::from_utf8_lossy(&buf[..n]).to_string();
+                        if tx.send(chunk).is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        });
+
         Self {
+            output_text: String::new(),
             input: String::new(),
-            output_lines: vec![TerminalLine {
-                text: "OpenClaw OS Terminal — Type 'help' for commands".to_string(),
-                is_command: false,
-            }],
-            working_dir,
-            history: Vec::new(),
-            history_index: None,
-            scrollback_limit: 1000,
+            scrollback_limit: 100_000,
             should_close: false,
+            writer: Some(writer),
+            output_rx: Some(rx),
         }
     }
 
-    pub fn execute_command(&mut self) {
-        let cmd = self.input.trim().to_string();
-        if cmd.is_empty() {
-            return;
-        }
-
-        // Add command line to output
-        self.output_lines.push(TerminalLine {
-            text: cmd.clone(),
-            is_command: true,
-        });
-
-        // Push to history
-        self.history.push(cmd.clone());
-        self.history_index = None;
-
-        // Clear input
-        self.input.clear();
-
-        // Parse and execute
-        let parts: Vec<&str> = cmd.split_whitespace().collect();
-        match parts.first().map(|s| *s) {
-            Some("clear") => {
-                self.output_lines.clear();
-                return;
+    pub fn tick(&mut self) {
+        if let Some(rx) = &self.output_rx {
+            let mut got_data = false;
+            while let Ok(chunk) = rx.try_recv() {
+                self.output_text.push_str(&chunk);
+                got_data = true;
             }
-            Some("exit") => {
-                self.should_close = true;
-                return;
-            }
-            Some("help") => {
-                let help = [
-                    "Available commands:",
-                    "  cd <dir>    — Change directory",
-                    "  clear       — Clear terminal",
-                    "  help        — Show this help",
-                    "  exit        — Close terminal window",
-                    "  <any>       — Runs via /bin/sh",
-                ];
-                for line in help {
-                    self.output_lines.push(TerminalLine {
-                        text: line.to_string(),
-                        is_command: false,
-                    });
+            if got_data {
+                self.output_text = strip_ansi(&self.output_text);
+                // Trim scrollback
+                if self.output_text.len() > self.scrollback_limit {
+                    let excess = self.output_text.len() - self.scrollback_limit;
+                    // Find a newline near the cut point to avoid splitting a line
+                    let cut = if let Some(nl) = self.output_text[excess..].find('\n') {
+                        excess + nl + 1
+                    } else {
+                        excess
+                    };
+                    self.output_text.drain(..cut);
                 }
             }
-            Some("cd") => {
-                let target = parts.get(1).copied().unwrap_or("~");
-                let target = if target == "~" {
-                    std::env::var("HOME").unwrap_or_else(|_| "/home/openclaw".to_string())
-                } else if target.starts_with('~') {
-                    let home =
-                        std::env::var("HOME").unwrap_or_else(|_| "/home/openclaw".to_string());
-                    format!("{}{}", home, &target[1..])
-                } else if target.starts_with('/') {
-                    target.to_string()
-                } else {
-                    format!("{}/{}", self.working_dir, target)
-                };
-
-                let path = std::path::Path::new(&target);
-                if path.is_dir() {
-                    // Canonicalize to resolve .. and .
-                    match path.canonicalize() {
-                        Ok(canon) => {
-                            self.working_dir = canon.to_string_lossy().to_string();
-                        }
-                        Err(e) => {
-                            self.output_lines.push(TerminalLine {
-                                text: format!("cd: {}", e),
-                                is_command: false,
-                            });
-                        }
-                    }
-                } else {
-                    self.output_lines.push(TerminalLine {
-                        text: format!("cd: {}: No such directory", target),
-                        is_command: false,
-                    });
-                }
-            }
-            _ => {
-                // Run via sh
-                match std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&cmd)
-                    .current_dir(&self.working_dir)
-                    .output()
-                {
-                    Ok(output) => {
-                        let stdout = String::from_utf8_lossy(&output.stdout);
-                        let stderr = String::from_utf8_lossy(&output.stderr);
-                        for line in stdout.lines() {
-                            self.output_lines.push(TerminalLine {
-                                text: line.to_string(),
-                                is_command: false,
-                            });
-                        }
-                        for line in stderr.lines() {
-                            self.output_lines.push(TerminalLine {
-                                text: line.to_string(),
-                                is_command: false,
-                            });
-                        }
-                    }
-                    Err(e) => {
-                        self.output_lines.push(TerminalLine {
-                            text: format!("error: {}", e),
-                            is_command: false,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Blank separator line
-        self.output_lines.push(TerminalLine {
-            text: String::new(),
-            is_command: false,
-        });
-
-        // Trim to scrollback limit
-        if self.output_lines.len() > self.scrollback_limit {
-            let excess = self.output_lines.len() - self.scrollback_limit;
-            self.output_lines.drain(..excess);
         }
     }
+
+    pub fn send_input(&mut self) {
+        let input = std::mem::take(&mut self.input);
+        if let Some(writer) = &mut self.writer {
+            let data = format!("{}\n", input);
+            let _ = writer.write_all(data.as_bytes());
+            let _ = writer.flush();
+        }
+    }
+
+    pub fn send_raw(&mut self, text: &str) {
+        if let Some(writer) = &mut self.writer {
+            let _ = writer.write_all(text.as_bytes());
+            let _ = writer.flush();
+        }
+    }
+}
+
+fn strip_ansi(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            if let Some(&next) = chars.peek() {
+                if next == '[' {
+                    chars.next();
+                    // CSI sequence — read until terminator letter or ~
+                    while let Some(&c) = chars.peek() {
+                        chars.next();
+                        if c.is_ascii_alphabetic() || c == '~' {
+                            break;
+                        }
+                    }
+                } else if next == ']' {
+                    // OSC sequence — skip until BEL or ST
+                    chars.next();
+                    while let Some(&c) = chars.peek() {
+                        chars.next();
+                        if c == '\x07' {
+                            break;
+                        }
+                        if c == '\x1b' {
+                            if chars.peek() == Some(&'\\') {
+                                chars.next();
+                                break;
+                            }
+                        }
+                    }
+                } else if next == '(' || next == ')' {
+                    // Character set selection — skip 2 chars
+                    chars.next();
+                    chars.next();
+                }
+            }
+        } else if ch == '\r' {
+            // Skip carriage returns
+            continue;
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 pub fn view_terminal<'a>(
@@ -174,21 +179,13 @@ pub fn view_terminal<'a>(
     let p = *palette;
 
     // --- Output area ---
-    let mut output_col = column![].spacing(1).width(Length::Fill);
+    let mut output_col = column![].spacing(0).width(Length::Fill);
 
-    for line in &state.output_lines {
-        if line.text.is_empty() {
+    for line in state.output_text.split('\n') {
+        if line.is_empty() {
             output_col = output_col.push(Space::with_height(4));
-        } else if line.is_command {
-            let prompt = text("$ ")
-                .size(theme::FONT_CAPTION)
-                .color(p.coral_bright);
-            let cmd_text = text(line.text.as_str())
-                .size(theme::FONT_CAPTION)
-                .color(p.coral_bright);
-            output_col = output_col.push(row![prompt, cmd_text]);
         } else {
-            let line_text = text(line.text.as_str())
+            let line_text = text(line.to_string())
                 .size(theme::FONT_CAPTION)
                 .color(p.text_primary);
             output_col = output_col.push(line_text);
@@ -202,6 +199,7 @@ pub fn view_terminal<'a>(
     )
     .height(Length::Fill)
     .width(Length::Fill)
+    .anchor_bottom()
     .id(scrollable::Id::new(format!("terminal-scroll-{}", window_id)));
 
     // --- Input area ---

@@ -19,3 +19,4 @@ sha2 = "0.10"
 base64 = "0.22"
 pkcs8 = { version = "0.10", features = ["pem"] }
 ureq = { version = "2", features = ["json"] }
+portable-pty = "0.8"
