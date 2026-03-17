@@ -143,22 +143,15 @@ impl ParticleField {
                 alpha,
             )
         } else {
-            // Light mode: saturated colors, premixed toward white
-            // This way accumulation goes color → white, not color → dark
-            let coral = (0.95, 0.25, 0.30);  // vivid coral
-            let cyan = (0.0, 0.70, 0.65);    // vivid teal
-            let base_r = coral.0 * (1.0 - t) + cyan.0 * t;
-            let base_g = coral.1 * (1.0 - t) + cyan.1 * t;
-            let base_b = coral.2 * (1.0 - t) + cyan.2 * t;
-
-            // Premix with white: blend (color → white) based on alpha
-            // Lower alpha = more white, higher alpha = more color
-            let mix = alpha.clamp(0.0, 1.0);
+            // Light mode: vivid saturated colors, standard alpha blending
+            // Over a white bg, alpha-blended color naturally fades to white at edges
+            let coral = (0.93, 0.22, 0.28);  // vivid coral
+            let cyan = (0.0, 0.65, 0.60);    // vivid teal
             Color::from_rgba(
-                base_r * mix + 1.0 * (1.0 - mix),
-                base_g * mix + 1.0 * (1.0 - mix),
-                base_b * mix + 1.0 * (1.0 - mix),
-                alpha.min(0.6),  // cap opacity so orbs stay soft
+                coral.0 * (1.0 - t) + cyan.0 * t,
+                coral.1 * (1.0 - t) + cyan.1 * t,
+                coral.2 * (1.0 - t) + cyan.2 * t,
+                alpha,
             )
         }
     }
@@ -199,8 +192,8 @@ impl canvas::Program<()> for ParticleField {
                 let peak_alpha = if is_dark {
                     0.10 * (0.75 + breath * 0.25)
                 } else {
-                    // Light mode: moderate alpha, the blend_color handles white fade
-                    0.35 * (0.75 + breath * 0.25)
+                    // Light mode: needs higher alpha since colors compete with white bg
+                    0.25 * (0.75 + breath * 0.25)
                 };
 
                 // Draw rings from outside in
@@ -226,7 +219,7 @@ impl canvas::Program<()> for ParticleField {
             // === Soft particles ===
             for p in &self.particles {
                 let pulse = (p.phase.sin() * 0.5 + 0.5) * 0.5;
-                let base_alpha = if is_dark { 0.12 } else { 0.4 };
+                let base_alpha = if is_dark { 0.12 } else { 0.35 };
                 let alpha = base_alpha * (0.5 + pulse);
                 let ct = (p.color_phase + self.time as f32 * 0.01) % 1.0;
 
