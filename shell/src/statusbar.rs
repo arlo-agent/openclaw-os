@@ -7,7 +7,7 @@ use crate::theme::{self, OpenClawPalette, ThemeMode};
 use iced::widget::{button, container, image, row, text, Space};
 
 // Embed the logo at compile time so it works regardless of install path
-static LOGO_BYTES: &[u8] = include_bytes!("../../assets/logo-32.png");
+static LOGO_BYTES: &[u8] = include_bytes!("../assets/logo-32.png");
 use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 

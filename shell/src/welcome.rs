@@ -12,7 +12,7 @@ use iced::{Alignment, Color, Element, Length, Padding};
 use iced_fonts::{Bootstrap, BOOTSTRAP_FONT};
 use rand::Rng;
 
-static LOGO_BYTES: &[u8] = include_bytes!("../../assets/logo-180.png");
+static LOGO_BYTES: &[u8] = include_bytes!("../assets/logo-180.png");
 
 // ── Data types ──────────────────────────────────────────────────────────
 
